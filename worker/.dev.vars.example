@@ -1,0 +1,4 @@
+# Copy to .dev.vars (git-ignored) for `npm run dev`. Values here are for your
+# local machine only; deployed secrets are set with `npx wrangler secret put`.
+ACCESS_TOKEN=pick-any-local-test-value
+# RDM_KEY=

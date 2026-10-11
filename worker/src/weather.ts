@@ -1,0 +1,208 @@
+// Open-Meteo forecast: fetch, and turn into what the dashboard shows.
+
+import type { Config } from "./config";
+import { pad2, parseHhmm, type LondonTime } from "./time";
+import { upstreamJson } from "./upstream";
+
+export interface ForecastData {
+  hourly: {
+    time: string[];
+    temperature_2m: number[];
+    precipitation_probability: (number | null)[];
+    precipitation: (number | null)[];
+    weather_code: number[];
+    wind_gusts_10m: (number | null)[];
+    wind_direction_10m: (number | null)[];
+  };
+  daily: { time: string[]; sunrise: string[]; sunset: string[] };
+}
+
+export interface HourSlot {
+  label: string;
+  temp: number;
+  chance: number;
+}
+
+export interface WeatherView {
+  summary: string;
+  high: { temp: number; at: string };
+  low: { temp: number; at: string };
+  rain: { totalMm: number; window: string | null };
+  gusts: { mph: number; dir: string };
+  hours: HourSlot[];
+  notices: string[];
+  sunrise: string | null;
+  sunset: string | null;
+}
+
+export async function fetchForecast(lat: number, lon: number, fetchFn: typeof fetch = fetch): Promise<ForecastData> {
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude", lat.toFixed(4));
+  url.searchParams.set("longitude", lon.toFixed(4));
+  url.searchParams.set(
+    "hourly",
+    "temperature_2m,precipitation_probability,precipitation,weather_code,wind_gusts_10m,wind_direction_10m",
+  );
+  url.searchParams.set("daily", "sunrise,sunset");
+  url.searchParams.set("timezone", "Europe/London");
+  url.searchParams.set("wind_speed_unit", "mph");
+  url.searchParams.set("forecast_days", "3");
+  const data = await upstreamJson<ForecastData>("OPEN-METEO", fetchFn, url.toString());
+  if (!Array.isArray(data?.hourly?.time) || !Array.isArray(data?.daily?.time)) throw new Error("OPEN-METEO BAD RESPONSE");
+  return { hourly: data.hourly, daily: data.daily };
+}
+
+const CONDITIONS: [number[], string][] = [
+  [[0], "CLEAR"],
+  [[1], "MAINLY CLEAR"],
+  [[2], "PARTLY CLOUDY"],
+  [[3], "CLOUDY"],
+  [[45, 48], "FOG"],
+  [[51, 53, 55], "DRIZZLE"],
+  [[56, 57], "FREEZING DRIZZLE"],
+  [[61], "LIGHT RAIN"],
+  [[63], "RAIN"],
+  [[65], "HEAVY RAIN"],
+  [[66, 67], "FREEZING RAIN"],
+  [[71], "LIGHT SNOW"],
+  [[73], "SNOW"],
+  [[75], "HEAVY SNOW"],
+  [[77], "SNOW GRAINS"],
+  [[80], "LIGHT SHOWERS"],
+  [[81], "SHOWERS"],
+  [[82], "HEAVY SHOWERS"],
+  [[85, 86], "SNOW SHOWERS"],
+  [[95], "THUNDERSTORMS"],
+  [[96, 99], "THUNDER AND HAIL"],
+];
+
+export function describeCode(code: number): string {
+  return CONDITIONS.find(([codes]) => codes.includes(code))?.[1] ?? "UNSETTLED";
+}
+
+const isPrecipCode = (code: number) => code >= 51;
+const isSnowCode = (code: number) => (code >= 71 && code <= 77) || code === 85 || code === 86;
+
+export function compass(deg: number): string {
+  return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
+const hourOf = (iso: string) => Number(iso.slice(11, 13));
+const dateOf = (iso: string) => iso.slice(0, 10);
+const clockOf = (iso: string) => iso.slice(11, 16);
+const roundTemp = (t: number) => Math.round(t) || 0; // avoid "-0"
+
+/** Hours ahead covered by the boxes and summary (current hour + 17 = 06:00 to 23:00). */
+export const WINDOW_HOURS = 18;
+
+export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): WeatherView {
+  const h = data.hourly;
+  const i0 = h.time.indexOf(`${now.date}T${pad2(now.hour)}:00`);
+  if (i0 < 0) throw new Error("FORECAST OUT OF DATE");
+  const end = Math.min(h.time.length, i0 + WINDOW_HOURS);
+  const chance = (i: number) => h.precipitation_probability[i] ?? 0;
+  const precip = (i: number) => h.precipitation[i] ?? 0;
+  const thr = cfg.rainChancePct;
+
+  // High and low (earliest hour wins ties).
+  let hi = i0;
+  let lo = i0;
+  let gust = i0;
+  let total = 0;
+  let firstWet = -1;
+  let lastWet = -1;
+  for (let i = i0; i < end; i++) {
+    if (h.temperature_2m[i] > h.temperature_2m[hi]) hi = i;
+    if (h.temperature_2m[i] < h.temperature_2m[lo]) lo = i;
+    if ((h.wind_gusts_10m[i] ?? 0) > (h.wind_gusts_10m[gust] ?? 0)) gust = i;
+    total += precip(i);
+    if (precip(i) >= 0.1) {
+      if (firstWet < 0) firstWet = i;
+      lastWet = i;
+    }
+  }
+  const high = { temp: roundTemp(h.temperature_2m[hi]), at: clockOf(h.time[hi]) };
+  const low = { temp: roundTemp(h.temperature_2m[lo]), at: clockOf(h.time[lo]) };
+  const rainWindow =
+    firstWet < 0 ? null : firstWet === lastWet ? `AROUND ${clockOf(h.time[firstWet])}` : `${clockOf(h.time[firstWet])}-${clockOf(h.time[lastWet])}`;
+
+  // Hourly strip: now, then every 3 hours on the 00/03/06... grid.
+  const hours: HourSlot[] = [{ label: "NOW", temp: roundTemp(h.temperature_2m[i0]), chance: Math.round(chance(i0)) }];
+  for (let i = i0 + 1; i < h.time.length && hours.length < 6; i++) {
+    if (hourOf(h.time[i]) % 3 === 0) hours.push({ label: clockOf(h.time[i]), temp: roundTemp(h.temperature_2m[i]), chance: Math.round(chance(i)) });
+  }
+
+  // One-line summary.
+  const cond = describeCode(h.weather_code[i0]);
+  const wet = (i: number) => chance(i) >= thr || isPrecipCode(h.weather_code[i]);
+  let summary: string;
+  if (wet(i0)) {
+    let dry = -1;
+    for (let i = i0 + 1; i < end; i++) {
+      if (!wet(i)) {
+        dry = i;
+        break;
+      }
+    }
+    const lead = isPrecipCode(h.weather_code[i0]) ? cond : `${cond}. ${isSnowCode(h.weather_code[i0]) ? "SNOW" : "RAIN"}`;
+    summary = dry < 0 ? `${lead} ALL DAY.` : `${lead} UNTIL ${clockOf(h.time[dry])}.`;
+  } else {
+    let next = -1;
+    for (let i = i0 + 1; i < end; i++) {
+      if (chance(i) >= thr) {
+        next = i;
+        break;
+      }
+    }
+    summary =
+      next < 0 ? `${cond}. STAYING DRY.` : `${cond}. ${isSnowCode(h.weather_code[next]) ? "SNOW" : "RAIN"} FROM ${clockOf(h.time[next])}.`;
+  }
+
+  // Notices.
+  const notices: string[] = [];
+  const tomorrowRain = now.hour >= cfg.rainToHour;
+  const rainDate = tomorrowRain ? h.time.slice(i0).map(dateOf).find((d) => d !== now.date) : now.date;
+  const rainHours: number[] = [];
+  for (let i = i0; i < h.time.length; i++) {
+    if (dateOf(h.time[i]) !== rainDate) continue;
+    const hr = hourOf(h.time[i]);
+    if (hr >= cfg.rainFromHour && hr <= cfg.rainToHour && chance(i) >= thr) rainHours.push(i);
+  }
+  if (rainHours.length > 0) {
+    const first = rainHours[0];
+    let peak = first;
+    for (const i of rainHours) {
+      if (chance(i) > chance(peak) || (chance(i) === chance(peak) && precip(i) > precip(peak))) peak = i;
+    }
+    const snow = isSnowCode(h.weather_code[peak]);
+    const what = snow ? "SNOW" : "RAIN";
+    const when = first === i0 ? `${what} NOW` : `${what}${tomorrowRain ? " TOMORROW" : ""} FROM ${clockOf(h.time[first])}`;
+    const peakText = peak === first ? "" : `, PEAK ${clockOf(h.time[peak])}`;
+    notices.push(`${when}${peakText}. ${snow ? "TAKE CARE ON PAVEMENTS." : "TAKE AN UMBRELLA."}`);
+  }
+  if (low.temp < cfg.coldBelowC) notices.push(`LOW OF ${low.temp}° AT ${low.at}. WRAP UP WARM.`);
+  if (high.temp > cfg.hotAboveC) notices.push(`HIGH OF ${high.temp}° AT ${high.at}. TAKE WATER.`);
+
+  // Sunrise/sunset: today's, or tomorrow's once today's sunset has passed.
+  let d = data.daily.time.indexOf(now.date);
+  const sunsetToday = d >= 0 ? parseHhmm(clockOf(data.daily.sunset[d] ?? "")) : null;
+  if (d >= 0 && sunsetToday !== null && now.minutes > sunsetToday && d + 1 < data.daily.time.length) d++;
+
+  return {
+    summary,
+    high,
+    low,
+    rain: { totalMm: total, window: rainWindow },
+    gusts: { mph: Math.round(h.wind_gusts_10m[gust] ?? 0), dir: compass(h.wind_direction_10m[gust] ?? 0) },
+    hours,
+    notices,
+    sunrise: d >= 0 ? clockOf(data.daily.sunrise[d]) : null,
+    sunset: d >= 0 ? clockOf(data.daily.sunset[d]) : null,
+  };
+}
+
+export function formatRain(mm: number): string {
+  if (mm < 0.05) return "0MM";
+  if (mm < 1) return `${mm.toFixed(1)}MM`;
+  return `${Math.round(mm)}MM`;
+}
