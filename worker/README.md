@@ -72,7 +72,7 @@ fails, its section is marked as unavailable and the rest is drawn as normal
 
 ## Preview locally
 
-Needs Node 18 or later.
+Needs Node.js 22 or later (Wrangler requires it).
 
 ```sh
 cd worker
@@ -93,17 +93,24 @@ Tests and type checks: `npm test` and `npm run typecheck`.
 
 ## Deploy
 
-Things to do by hand:
+Things to do by hand (on your own computer, with Node.js 22 or later installed):
 
-1. Install dependencies: `cd worker && npm install`.
+1. Get the code and install dependencies:
+   ```sh
+   git clone https://github.com/samlesley/kindle_dashboard.git
+   cd kindle_dashboard
+   git checkout claude/gallant-turing-2e4kkf   # skip once this is merged into main
+   cd worker
+   npm install
+   ```
 2. Log in to Cloudflare: `npx wrangler login` (opens a browser).
 3. Deploy: `npx wrangler deploy`. On the first deploy, Wrangler creates the
    `CACHE` KV namespace and writes its id back into `wrangler.toml`. If it asks,
    choose to create a new namespace. Commit the updated `wrangler.toml` if you like;
    the namespace stays linked either way. The output ends with your URL,
    `https://kindle-dashboard.<your-subdomain>.workers.dev`.
-4. Make an access token on your own machine, for example with
-   `openssl rand -hex 24`, and keep it somewhere safe.
+4. Make an access token on your own machine and keep it somewhere safe, for example with
+   `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`.
 5. Store it as a secret: `npx wrangler secret put ACCESS_TOKEN`, then paste
    the token when Wrangler prompts for it. Until this is set, every request gets `403`.
 6. Check it in a browser: open
