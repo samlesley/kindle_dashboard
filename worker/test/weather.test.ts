@@ -58,6 +58,34 @@ describe("weather", () => {
     expect(w.sunrise).toBe("07:31"); // tomorrow's, as today's sunset has passed
   });
 
+  it("keeps the boxes within today", () => {
+    // Warmer after midnight than this afternoon: the high must still be today's.
+    const f = sampleForecast();
+    f.hourly.temperature_2m[24 + 1] = 16; // 01:00 tomorrow
+    const morning = buildWeather(f, at("2026-10-09T07:16:00Z"), cfg); // 08:16 BST
+    expect(morning.high).toEqual({ temp: 13, at: "15:00" });
+
+    // High and low cover the whole day, including hours already gone.
+    const noon = buildWeather(f, at("2026-10-09T11:00:00Z"), cfg); // 12:00 BST
+    expect(noon.low).toEqual({ temp: 7, at: "06:00" });
+
+    // Rain and gusts cover what is still to come today.
+    const later = buildWeather(f, at("2026-10-09T15:10:00Z"), cfg); // 16:10 BST
+    expect(later.rain.window).toBe("16:00-23:00");
+    expect(later.rain.totalMm).toBeCloseTo(5.6);
+  });
+
+  it("only warns about cold that is still to come", () => {
+    // Low of 2° at 06:00 has passed by noon; the rest of the day stays above 3°.
+    const w = buildWeather(sampleForecast({ tempOffset: -5 }), at("2026-10-09T11:00:00Z"), cfg);
+    expect(w.low).toEqual({ temp: 2, at: "06:00" });
+    expect(w.notices.some((n) => n.startsWith("LOW"))).toBe(false);
+
+    // Late evening looks ahead to tomorrow morning.
+    const night = buildWeather(sampleForecast({ tempOffset: -6 }), at("2026-10-09T21:30:00Z"), cfg); // 22:30 BST
+    expect(night.notices).toContain("LOW OF 1° TOMORROW AT 06:00. WRAP UP WARM.");
+  });
+
   it("rejects a forecast that doesn't cover now", () => {
     expect(() => buildWeather(sampleForecast(), at("2026-11-01T12:00:00Z"), cfg)).toThrow("FORECAST OUT OF DATE");
   });

@@ -175,15 +175,19 @@ Springburn at :11 and :41. The Springburn trains are there to be filtered out.
 **Weather** (Open-Meteo, cached 3 h in KV; if a refresh fails, the last
 forecast is kept for up to 24 h and the heading says `AS OF hh:mm`):
 
-- The summary, high/low, rain total and window, and peak gusts cover the
-  next 18 hours (06:44 → 06:00–23:00).
+- The boxes cover today only. High and low are for the whole day
+  (midnight to midnight). Rain total and window, and peak gusts, are for
+  what is still to come today.
+- The summary line looks 18 hours ahead.
 - The hourly strip starts with `NOW`, then every 3 hours on the 00/03/06…
   grid. Each gauge segment is 20% chance of rain.
-- Notices, only when a rule applies:
-  - wet: rain chance ≥ 50% between 07:00 and 22:00 (tomorrow's window after
-    22:00), e.g. `RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
-  - cold: low below 3°, e.g. `LOW OF 1° AT 06:00. WRAP UP WARM.`
-  - hot: high above 22°, e.g. `HIGH OF 24° AT 15:00. TAKE WATER.`
+- Notices, only when a rule applies. They look at the rest of today, and
+  switch to tomorrow from 22:00:
+  - wet: rain chance ≥ 50% between 07:00 and 22:00, e.g.
+    `RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
+  - cold: a low below 3° still to come, e.g. `LOW OF 1° AT 06:00. WRAP UP WARM.`
+    (or `LOW OF 1° TOMORROW AT 06:00` late in the evening)
+  - hot: a high above 22° still to come, e.g. `HIGH OF 24° AT 15:00. TAKE WATER.`
 
 **Headline:** the first `<item>` title from `feeds.bbci.co.uk/news/rss.xml`,
 cached for 30 minutes. It wraps onto two lines when there's room.

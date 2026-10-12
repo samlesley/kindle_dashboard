@@ -92,7 +92,7 @@ const dateOf = (iso: string) => iso.slice(0, 10);
 const clockOf = (iso: string) => iso.slice(11, 16);
 const roundTemp = (t: number) => Math.round(t) || 0; // avoid "-0"
 
-/** Hours ahead covered by the boxes and summary (current hour + 17 = 06:00 to 23:00). */
+/** Hours ahead the summary line looks at. */
 export const WINDOW_HOURS = 18;
 
 export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): WeatherView {
@@ -103,17 +103,31 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
   const chance = (i: number) => h.precipitation_probability[i] ?? 0;
   const precip = (i: number) => h.precipitation[i] ?? 0;
   const thr = cfg.rainChancePct;
+  const temp = (i: number) => h.temperature_2m[i];
+  /** Warmest (sign 1) or coldest (sign -1) hour in [from, to]; earliest wins ties. */
+  const extreme = (from: number, to: number, sign: 1 | -1) => {
+    let best = from;
+    for (let i = from + 1; i <= to; i++) if (sign * (temp(i) - temp(best)) > 0) best = i;
+    return best;
+  };
+  const lastOfDate = (date: string | undefined, from: number) => {
+    let i = from;
+    while (i + 1 < h.time.length && dateOf(h.time[i + 1]) === date) i++;
+    return i;
+  };
 
-  // High and low (earliest hour wins ties).
-  let hi = i0;
-  let lo = i0;
+  // The boxes cover today only: high and low over the whole day, rain and
+  // gusts over what is still to come today.
+  let dayStart = i0;
+  while (dayStart > 0 && dateOf(h.time[dayStart - 1]) === now.date) dayStart--;
+  const dayEnd = lastOfDate(now.date, i0);
+  const hi = extreme(dayStart, dayEnd, 1);
+  const lo = extreme(dayStart, dayEnd, -1);
   let gust = i0;
   let total = 0;
   let firstWet = -1;
   let lastWet = -1;
-  for (let i = i0; i < end; i++) {
-    if (h.temperature_2m[i] > h.temperature_2m[hi]) hi = i;
-    if (h.temperature_2m[i] < h.temperature_2m[lo]) lo = i;
+  for (let i = i0; i <= dayEnd; i++) {
     if ((h.wind_gusts_10m[i] ?? 0) > (h.wind_gusts_10m[gust] ?? 0)) gust = i;
     total += precip(i);
     if (precip(i) >= 0.1) {
@@ -121,8 +135,8 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
       lastWet = i;
     }
   }
-  const high = { temp: roundTemp(h.temperature_2m[hi]), at: clockOf(h.time[hi]) };
-  const low = { temp: roundTemp(h.temperature_2m[lo]), at: clockOf(h.time[lo]) };
+  const high = { temp: roundTemp(temp(hi)), at: clockOf(h.time[hi]) };
+  const low = { temp: roundTemp(temp(lo)), at: clockOf(h.time[lo]) };
   const rainWindow =
     firstWet < 0 ? null : firstWet === lastWet ? `AROUND ${clockOf(h.time[firstWet])}` : `${clockOf(h.time[firstWet])}-${clockOf(h.time[lastWet])}`;
 
@@ -158,10 +172,13 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
       next < 0 ? `${cond}. STAYING DRY.` : `${cond}. ${isSnowCode(h.weather_code[next]) ? "SNOW" : "RAIN"} FROM ${clockOf(h.time[next])}.`;
   }
 
-  // Notices.
+  // Notices look ahead: the rest of today, or through tomorrow once it is
+  // past the end of the rain window (22:00).
   const notices: string[] = [];
-  const tomorrowRain = now.hour >= cfg.rainToHour;
-  const rainDate = tomorrowRain ? h.time.slice(i0).map(dateOf).find((d) => d !== now.date) : now.date;
+  const lookTomorrow = now.hour >= cfg.rainToHour;
+  const rainDate = lookTomorrow ? h.time.slice(i0).map(dateOf).find((d) => d !== now.date) : now.date;
+  const aheadEnd = lastOfDate(rainDate, lookTomorrow ? dayEnd : i0);
+  const tomorrow = (i: number) => (dateOf(h.time[i]) !== now.date ? " TOMORROW" : "");
   const rainHours: number[] = [];
   for (let i = i0; i < h.time.length; i++) {
     if (dateOf(h.time[i]) !== rainDate) continue;
@@ -176,12 +193,18 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
     }
     const snow = isSnowCode(h.weather_code[peak]);
     const what = snow ? "SNOW" : "RAIN";
-    const when = first === i0 ? `${what} NOW` : `${what}${tomorrowRain ? " TOMORROW" : ""} FROM ${clockOf(h.time[first])}`;
+    const when = first === i0 ? `${what} NOW` : `${what}${tomorrow(first)} FROM ${clockOf(h.time[first])}`;
     const peakText = peak === first ? "" : `, PEAK ${clockOf(h.time[peak])}`;
     notices.push(`${when}${peakText}. ${snow ? "TAKE CARE ON PAVEMENTS." : "TAKE AN UMBRELLA."}`);
   }
-  if (low.temp < cfg.coldBelowC) notices.push(`LOW OF ${low.temp}° AT ${low.at}. WRAP UP WARM.`);
-  if (high.temp > cfg.hotAboveC) notices.push(`HIGH OF ${high.temp}° AT ${high.at}. TAKE WATER.`);
+  const coldest = extreme(i0, aheadEnd, -1);
+  const warmest = extreme(i0, aheadEnd, 1);
+  if (roundTemp(temp(coldest)) < cfg.coldBelowC) {
+    notices.push(`LOW OF ${roundTemp(temp(coldest))}°${tomorrow(coldest)} AT ${clockOf(h.time[coldest])}. WRAP UP WARM.`);
+  }
+  if (roundTemp(temp(warmest)) > cfg.hotAboveC) {
+    notices.push(`HIGH OF ${roundTemp(temp(warmest))}°${tomorrow(warmest)} AT ${clockOf(h.time[warmest])}. TAKE WATER.`);
+  }
 
   // Sunrise/sunset: today's, or tomorrow's once today's sunset has passed.
   let d = data.daily.time.indexOf(now.date);
