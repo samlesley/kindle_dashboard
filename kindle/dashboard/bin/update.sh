@@ -92,6 +92,10 @@ fetch() {
 
 power_state
 log "update ($MODE): starting (state $PSTATE, wifi $WIFI_BEFORE)"
+if clock_on; then
+    log "clock: redrawn $(cat "$DASH_RUN/clock_count" 2>/dev/null || echo 0) times since the last update"
+    rm -f "$DASH_RUN/clock_count"
+fi
 OK=0
 if [ -z "$DASHBOARD_URL" ] || [ -z "$DASHBOARD_TOKEN" ]; then
     log "update ($MODE): DASHBOARD_URL or DASHBOARD_TOKEN missing from config.sh"
@@ -103,7 +107,7 @@ fi
 
 if asleep; then
     wifi_set 0
-    draw_image
+    show_dashboard
     set_wake_timer
     # The daemon holds off sleep while we work; let the Kindle sleep again now.
     if [ -f "$DASH_RUN/deferred" ]; then

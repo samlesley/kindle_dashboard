@@ -2,8 +2,9 @@
 
 Returns a freshly drawn 1072×1448, 8-bit greyscale PNG on every request: the
 next three trains from Alexandra Parade towards Queen St / Partick, today's
-weather, the BBC top story, and a footer showing the Kindle's battery level and next
-refresh time. The layout follows [`docs/mockup.png`](../docs/mockup.png).
+weather, the BBC top story, and a footer showing when it was drawn, the
+Kindle's next refresh time and its battery level. The time in the top right is
+kept current by the Kindle between fetches (see [The clock](#the-clock)). The layout follows [`docs/mockup.png`](../docs/mockup.png).
 
 | Normal | Delayed | Cancelled | Upstreams down |
 | --- | --- | --- | --- |
@@ -62,6 +63,8 @@ https://kindle-dashboard.<your-subdomain>.workers.dev/?k=<ACCESS_TOKEN>&batt=<0-
 | `k` | Required. Must match the `ACCESS_TOKEN` secret, otherwise the response is `403`. |
 | `batt` | Battery %, shown in the footer (`BATT 82%`). Optional. |
 | `next` | Next refresh time, shown in the footer (`NEXT 06:54`). Optional. |
+
+The footer also shows when the image was drawn (`UPDATED 06:44`).
 | `mock` | `normal`, `delayed` or `cancelled`. Overrides `MOCK_SCENARIO` while trains are in mock mode. |
 | `format=json` | Returns the data behind the image instead of the PNG, for debugging. |
 
@@ -69,6 +72,21 @@ Responses are `image/png` with `cache-control: no-store`. If an upstream API
 fails, its section is marked as unavailable and the rest is drawn as normal
 (the status is still `200`). Only a failure to draw the image at all returns
 `500`, so the Kindle can keep its previous image.
+
+## The clock
+
+The top right shows the current time. The Worker draws it as at the moment of
+the request. Between fetches the Kindle keeps it current without Wi-Fi: each
+minute it pastes in the digits that changed, from ten small images in
+[`kindle/dashboard/clock/`](../kindle/dashboard/clock). Each image is cut from
+the dashboard exactly as the Worker draws that digit, and `clock.sh` there
+records where the digits go.
+
+If you change the clock's font, size or position in `src/layout.ts`, run
+`npm run clock` to remake those files, then reinstall them on the Kindle.
+`test/clock.test.ts` checks two things: pasting the images gives exactly the
+image the Worker would draw at that time, and the files in the repository are
+up to date.
 
 ## Preview locally
 
@@ -206,7 +224,9 @@ src/weather.ts        Open-Meteo client, summary, boxes, strip, notices
 src/headline.ts       BBC RSS
 src/cache.ts          memory → KV (or Cache API) read-through cache
 src/layout.ts         all positions and sizes
+src/clock.ts          clock digit images and positions for the Kindle
 src/render/*          TrueType reader, rasteriser, canvas, PNG encoder, warm-up
 scripts/preview.ts    npm run preview
+scripts/clock.ts      npm run clock: writes kindle/dashboard/clock/
 scripts/fixtures.ts   offline sample data (also used by tests)
 ```

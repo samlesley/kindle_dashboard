@@ -22,9 +22,10 @@ CP="cp"
 if cp -X /dev/null "${TMPDIR:-/tmp}/kdash-cp-test" 2>/dev/null; then CP="cp -X"; fi
 rm -f "${TMPDIR:-/tmp}/kdash-cp-test"
 
-mkdir -p "$KINDLE/dashboard/bin" "$KINDLE/dashboard/certs"
+mkdir -p "$KINDLE/dashboard/bin" "$KINDLE/dashboard/certs" "$KINDLE/dashboard/clock"
 $CP "$HERE"/dashboard/bin/*.sh "$HERE/dashboard/bin/curl" "$KINDLE/dashboard/bin/"
 $CP "$HERE/dashboard/certs/cacert.pem" "$KINDLE/dashboard/certs/"
+$CP "$HERE"/dashboard/clock/* "$KINDLE/dashboard/clock/"
 $CP "$HERE/dashboard/config.example.sh" "$KINDLE/dashboard/"
 $CP "$HERE"/documents/dashboard-*.sh "$KINDLE/documents/"
 

@@ -7,6 +7,7 @@
     "deploy": "wrangler deploy",
     "preview": "tsx scripts/preview.ts",
     "preview:live": "tsx scripts/preview.ts --live",
+    "clock": "tsx scripts/clock.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

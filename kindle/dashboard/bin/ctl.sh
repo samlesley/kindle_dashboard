@@ -44,6 +44,8 @@ prepare_run() {
     cp "$BIN/lib.sh" "$BIN/daemon.sh" "$BIN/update.sh" "$DASH_RUN/"
     tr -d '\r' < "$DASH_HOME/config.sh" > "$DASH_RUN/config.sh"
     cp "$DASH_HOME/certs/cacert.pem" "$DASH_RUN/cacert.pem"
+    rm -rf "$DASH_RUN/clock"
+    [ -d "$DASH_HOME/clock" ] && cp -r "$DASH_HOME/clock" "$DASH_RUN/clock"
     # Bundled modern curl: the Kindle's own can't negotiate TLS with Cloudflare.
     # Checked with a time limit, so a curl that can't start never hangs Start.
     rm -f "$DASH_RUN/curl"
@@ -105,7 +107,7 @@ stop_daemon() {
         kill -KILL -"$PG" 2>/dev/null
     fi
     kill_strays
-    rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid"
+    rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid" "$DASH_RUN/clock_shown"
     rmdir "$DASH_RUN/lock" 2>/dev/null
 }
 

@@ -16,6 +16,7 @@ load_config() {
     DRAW_DELAY=2
     WIFI_TIMEOUT=30
     FETCH_TIMEOUT=20
+    CLOCK=1
     TICK=30 # seconds between checks while on the sleep screen without deep sleep
     # The working copy is used once running, so the USB storage can be
     # unavailable (e.g. plugged into a computer) without breaking anything.
@@ -25,6 +26,9 @@ load_config() {
         . "$DASH_HOME/config.sh"
     fi
     CA_BUNDLE="$DASH_RUN/cacert.pem"
+    # Where the clock digits go (generated from the Worker's layout).
+    CLOCK_Y=""
+    [ -f "$DASH_RUN/clock/clock.sh" ] && . "$DASH_RUN/clock/clock.sh"
 }
 
 # ---------------------------------------------------------------- logging
@@ -127,6 +131,8 @@ clock_minutes() { # HH:MM -> R, minutes since midnight
 
 is_slot() { # minute-of-day -> success if a refresh is due then
     local band iv start end off len
+    # With the clock on, always refresh at midnight so the date changes with it.
+    [ "$1" -eq 0 ] && [ "$CLOCK" = 1 ] && return 0
     for band in $SCHEDULE; do
         iv=${band#*=}
         band=${band%%=*}
@@ -219,30 +225,92 @@ battery() { # -> BATT, percent
     esac
 }
 
-set_wake_timer() { # arm the RTC wake for the stored next refresh
-    local now next secs
+set_wake_timer() { # arm the RTC wake for the next refresh, or the next clock minute if sooner
+    local now next secs tick early=30
     now=$(date +%s)
     next=$(cat "$DASH_RUN/next_epoch" 2>/dev/null)
     case "$next" in '' | *[!0-9]*) next=0 ;; esac
-    if [ "$next" -le $((now + 30)) ]; then
+    # With the clock on, a refresh only moments away is still kept (see below).
+    clock_on && early=0
+    if [ "$next" -le $((now + early)) ]; then
         next_slot "$now"
         next=$NEXT_EPOCH
         echo "$next" > "$DASH_RUN/next_epoch"
     fi
     secs=$((next - now))
-    [ "$secs" -lt 60 ] && secs=60
+    if clock_on; then
+        # Wake at the start of the next minute. If that's too close to go to
+        # sleep and wake for, show it now, a few seconds early, and wake for
+        # the minute after.
+        tick=$((now / 60 * 60 + 60))
+        if [ $((tick - now)) -lt 20 ]; then
+            draw_clock "$tick"
+            tick=$((tick + 60))
+        fi
+        if [ "$tick" -lt "$next" ]; then
+            # Just the clock: that's every minute, so not logged.
+            lipc-set-prop -i com.lab126.powerd rtcWakeup $((tick - now)) 2>/dev/null
+            return 0
+        fi
+        [ "$secs" -lt 20 ] && secs=20
+    else
+        [ "$secs" -lt 60 ] && secs=60
+    fi
     lipc-set-prop -i com.lab126.powerd rtcWakeup "$secs" 2>/dev/null
     hhmm "$next"
     log "wake timer set for $HHMM (${secs}s)"
 }
 
-draw_image() { # show the latest dashboard image full screen
+draw_image() { # show the latest dashboard image full screen; fails if there is none
     local img="$DASH_RUN/dashboard.png"
-    [ -s "$img" ] || return 0
+    [ -s "$img" ] || return 1
     if [ -x "$FBINK" ] && "$FBINK" -q -c -f -g file="$img" >/dev/null 2>&1; then
         return 0
     fi
     eips -f -g "$img" >/dev/null 2>&1
+}
+
+show_dashboard() { # the latest image, with the clock brought up to now
+    draw_image || return 1
+    clock_on || return 0
+    echo "- - - -" > "$DASH_RUN/clock_shown"
+    draw_clock
+}
+
+# ---------------------------------------------------------------- clock
+# With CLOCK=1 the time in the top right is kept current between fetches,
+# without Wi-Fi: the Kindle wakes each minute and pastes in the digits that
+# changed. The digit images in clock/ are cut from the dashboard by the
+# Worker (`npm run clock`), so they match it exactly. "clock_shown" holds the
+# digits on screen, and exists only while our dashboard is showing.
+
+clock_on() {
+    [ "$CLOCK" = 1 ] && [ -n "$CLOCK_Y" ] && [ -s "$DASH_RUN/clock/0.png" ]
+}
+
+draw_digit() { # digit x -> paste one clock digit at that position
+    local img="$DASH_RUN/clock/$1.png"
+    if [ -x "$FBINK" ] && "$FBINK" -q -g file="$img",x="$2",y="$CLOCK_Y" >/dev/null 2>&1; then
+        return 0
+    fi
+    eips -g "$img" -x "$2" -y "$CLOCK_Y" >/dev/null 2>&1
+}
+
+draw_clock() { # [epoch] -> show that time (default now) on the dashboard's clock
+    local s1 s2 s3 s4 w1 w2 w3 w4
+    clock_on && [ -f "$DASH_RUN/clock_shown" ] || return 0
+    london "${1:-$(date +%s)}"
+    w1=$((L_H / 10)) w2=$((L_H % 10)) w3=$((L_MI / 10)) w4=$((L_MI % 10))
+    read -r s1 s2 s3 s4 < "$DASH_RUN/clock_shown"
+    [ "$w1$w2$w3$w4" = "$s1$s2$s3$s4" ] && return 0
+    # A digit that fails to draw is marked "-", so it's tried again next time.
+    [ "$w1" = "$s1" ] || draw_digit "$w1" "$CLOCK_X1" || w1=-
+    [ "$w2" = "$s2" ] || draw_digit "$w2" "$CLOCK_X2" || w2=-
+    [ "$w3" = "$s3" ] || draw_digit "$w3" "$CLOCK_X3" || w3=-
+    [ "$w4" = "$s4" ] || draw_digit "$w4" "$CLOCK_X4" || w4=-
+    # Unless woken to read meanwhile (then it stays gone).
+    [ -f "$DASH_RUN/clock_shown" ] && echo "$w1 $w2 $w3 $w4" > "$DASH_RUN/clock_shown"
+    echo $(($(cat "$DASH_RUN/clock_count" 2>/dev/null || echo 0) + 1)) > "$DASH_RUN/clock_count"
 }
 
 run_with_timeout() { # seconds command... -> the command's status, or 124 if it overran

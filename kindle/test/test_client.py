@@ -5,9 +5,10 @@
 
 1. The UK-time and schedule maths in lib.sh are checked against Python's
    zoneinfo for thousands of timestamps, including every clock change.
-2. The real scripts are driven through sleep, timer wake, a failed fetch and
+2. The clock helpers (digits drawn, wake-ups each minute) at chosen times.
+3. The real scripts are driven through sleep, timer wake, a failed fetch and
    waking to read, with fake versions of the Kindle's lipc tools, curl and
-   FBInk.
+   FBInk, with the clock off and on.
 
 Scripts run under BusyBox ash (the Kindle's shell) when a busybox binary is
 on PATH or in $BUSYBOX, and always under /bin/sh.
@@ -28,6 +29,7 @@ from zoneinfo import ZoneInfo
 HERE = Path(__file__).resolve().parent
 CLIENT = HERE.parent
 BIN = CLIENT / "dashboard" / "bin"
+CLOCK_DIR = CLIENT / "dashboard" / "clock"
 LONDON = ZoneInfo("Europe/London")
 SCHEDULE = [("06:00", "10:00", 10), ("10:00", "22:00", 30), ("22:00", "06:00", 120)]
 TOKEN = "secret123abc"
@@ -203,10 +205,137 @@ cp "$FAKE/fixture.png" "$out"
 
 FAKE_FBINK = """#!/bin/sh
 for a in "$@"; do
-    case "$a" in file=*) img=${a#file=} ;; esac
+    case "$a" in file=*) spec=${a#file=} ;; esac
 done
-echo "draw $(md5sum "$img" | cut -c1-8)" >> "$FAKE/calls.log"
+img=${spec%%,*}
+case "$img" in
+    */clock/*.png)
+        d=${img##*/}
+        x=${spec#*,x=}
+        echo "digit ${d%.png} x=${x%%,*}" >> "$FAKE/calls.log"
+        ;;
+    *) echo "draw $(md5sum "$img" | cut -c1-8)" >> "$FAKE/calls.log" ;;
+esac
 """
+
+
+def clock_positions():
+    text = (CLOCK_DIR / "clock.sh").read_text()
+    values = dict(part.split("=") for line in text.splitlines() if line.startswith("CLOCK_") for part in line.split())
+    return [values[f"CLOCK_X{i}"] for i in range(1, 5)]
+
+
+def epoch(y, mo, d, h, mi, s=0):
+    return int(datetime(y, mo, d, h, mi, s, tzinfo=LONDON).timestamp())
+
+
+class ClockFunctions(unittest.TestCase):
+    """lib.sh's clock helpers at chosen times, with fake FBInk and lipc."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="kdash-clock-"))
+        self.run_dir = self.tmp / "run"
+        self.fake = self.tmp / "fake"
+        self.fakebin = self.tmp / "fakebin"
+        for d in (self.run_dir, self.fake / "props", self.fakebin):
+            d.mkdir(parents=True)
+        shutil.copytree(CLOCK_DIR, self.run_dir / "clock")
+        (self.run_dir / "config.sh").write_text('SCHEDULE="06:00-10:00=10 10:00-22:00=30 22:00-06:00=120"\n')
+        for name, body in (("lipc-set-prop", FAKE_SET), ("fbink", FAKE_FBINK)):
+            p = self.fakebin / name
+            p.write_text(body)
+            p.chmod(0o755)
+        self.xs = clock_positions()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def run_at(self, now, script, shell):
+        driver = f"""
+            . "{BIN}/lib.sh"
+            load_config
+            date() {{ echo "$NOW"; }}
+            {script}
+        """
+        env = {
+            **os.environ,
+            "PATH": f"{self.fakebin}:{os.environ['PATH']}",
+            "FAKE": str(self.fake),
+            "DASH_RUN": str(self.run_dir),
+            "FBINK": str(self.fakebin / "fbink"),
+            "NOW": str(now),
+        }
+        (self.fake / "calls.log").write_text("")
+        out = subprocess.run(shell + ["-c", textwrap.dedent(driver)], env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return (self.fake / "calls.log").read_text().splitlines()
+
+    def shown(self):
+        return (self.run_dir / "clock_shown").read_text().split()
+
+    def log(self):
+        p = self.run_dir / "log.txt"
+        return p.read_text() if p.exists() else ""
+
+    def test_draws_only_changed_digits(self):
+        x1, x2, x3, x4 = self.xs
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                # Nothing while our dashboard isn't showing.
+                (self.run_dir / "clock_shown").unlink(missing_ok=True)
+                self.assertEqual(self.run_at(epoch(2026, 10, 9, 6, 44), "draw_clock", shell), [])
+                # Just after the full image: every digit.
+                (self.run_dir / "clock_shown").write_text("- - - -\n")
+                calls = self.run_at(epoch(2026, 10, 9, 6, 44, 3), "draw_clock", shell)
+                self.assertEqual(calls, [f"digit 0 x={x1}", f"digit 6 x={x2}", f"digit 4 x={x3}", f"digit 4 x={x4}"])
+                self.assertEqual(self.shown(), ["0", "6", "4", "4"])
+                # Same minute: nothing. Next minute: one digit.
+                self.assertEqual(self.run_at(epoch(2026, 10, 9, 6, 44, 40), "draw_clock", shell), [])
+                self.assertEqual(self.run_at(epoch(2026, 10, 9, 6, 45, 2), "draw_clock", shell), [f"digit 5 x={x4}"])
+                # 06:59 -> 07:00: three digits. 23:59 -> 00:00 (GMT, after the clocks go back): all four.
+                (self.run_dir / "clock_shown").write_text("0 6 5 9\n")
+                calls = self.run_at(epoch(2026, 10, 9, 7, 0, 1), "draw_clock", shell)
+                self.assertEqual(calls, [f"digit 7 x={x2}", f"digit 0 x={x3}", f"digit 0 x={x4}"])
+                (self.run_dir / "clock_shown").write_text("2 3 5 9\n")
+                calls = self.run_at(epoch(2026, 11, 2, 0, 0, 1), "draw_clock", shell)
+                self.assertEqual(calls, [f"digit 0 x={x1}", f"digit 0 x={x2}", f"digit 0 x={x3}", f"digit 0 x={x4}"])
+
+    def test_wakes_each_minute(self):
+        x4 = self.xs[3]
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                (self.run_dir / "clock_shown").write_text("0 6 4 4\n")
+                (self.run_dir / "log.txt").unlink(missing_ok=True)
+                (self.run_dir / "next_epoch").write_text(str(epoch(2026, 10, 9, 6, 50)))
+                # Mid-minute: wake at the next minute, quietly.
+                calls = self.run_at(epoch(2026, 10, 9, 6, 44, 20), "set_wake_timer", shell)
+                self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 40"])
+                self.assertEqual(self.log(), "")
+                # Too close to the next minute: show it now, wake for the one after.
+                calls = self.run_at(epoch(2026, 10, 9, 6, 44, 50), "set_wake_timer", shell)
+                self.assertEqual(calls, [f"digit 5 x={x4}", "set com.lab126.powerd rtcWakeup 70"])
+                # The refresh comes at the next minute: wake for it, logged.
+                calls = self.run_at(epoch(2026, 10, 9, 6, 49, 20), "set_wake_timer", shell)
+                self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 40"])
+                self.assertIn("wake timer set for 06:50 (40s)", self.log())
+                # A refresh moments away is kept, not skipped.
+                calls = self.run_at(epoch(2026, 10, 9, 6, 49, 50), "set_wake_timer", shell)
+                self.assertEqual(calls[-1], "set com.lab126.powerd rtcWakeup 20")
+                self.assertEqual((self.run_dir / "next_epoch").read_text().strip(), str(epoch(2026, 10, 9, 6, 50)))
+                # Clock off: as before, only refreshes, at least a minute away.
+                (self.run_dir / "config.sh").write_text('CLOCK=0\n')
+                calls = self.run_at(epoch(2026, 10, 9, 6, 44, 20), "set_wake_timer", shell)
+                self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 340"])
+                (self.run_dir / "config.sh").write_text("")
+
+    def test_refreshes_at_midnight(self):
+        # So the date changes with the clock, even if the schedule skips midnight.
+        script = 'SCHEDULE="06:00-22:00=30 22:00-06:00=180"; CLOCK=$C; next_slot "$NOW"; echo "$NEXT_HHMM" > "$DASH_RUN/out"'
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                for clock, expected in (("1", "00:00"), ("0", "01:00")):
+                    self.run_at(epoch(2026, 10, 9, 23, 30), script.replace("$C", clock), shell)
+                    self.assertEqual((self.run_dir / "out").read_text().strip(), expected, f"CLOCK={clock}")
 
 BUSYBOX_APPLETS = "cat cp cut date dd head mkdir mv rm rmdir sed setsid sleep tail tr wc md5sum".split()
 
@@ -227,8 +356,9 @@ class Simulation(unittest.TestCase):
         (self.home / "certs" / "cacert.pem").write_text("dummy")
         (self.home / "config.sh").write_text(
             f'DASHBOARD_URL="https://example.test/"\r\nDASHBOARD_TOKEN="{TOKEN}"\r\n'
-            "DRAW_DELAY=0\r\nWIFI_TIMEOUT=5\r\nFETCH_TIMEOUT=10\r\n"
+            "DRAW_DELAY=0\r\nWIFI_TIMEOUT=5\r\nFETCH_TIMEOUT=10\r\nCLOCK=0\r\n"
         )
+        shutil.copytree(CLOCK_DIR, self.home / "clock")
         shutil.copy(FIXTURE_PNG, self.fake / "fixture.png")
         self.props(
             {
@@ -504,6 +634,97 @@ class Simulation(unittest.TestCase):
         self.assertTrue(any(c.startswith("draw") for c in self.calls()))
         self.assertIn("refresh due while on the sleep screen", self.log_text())
         self.assertIn("power: ", self.log_text())
+
+    def test_clock_ticks_without_wifi(self):
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                if name != SHELLS[0][0]:
+                    self.tearDown()
+                    self.setUp()
+                self.use_shell(name, shell)
+                self.clock_scenario()
+
+    def clock_on(self, extra=""):
+        cfg = self.home / "config.sh"
+        cfg.write_text(cfg.read_text().replace("CLOCK=0", "CLOCK=1") + extra)
+
+    def digits(self):
+        return [c for c in self.calls() if c.startswith("digit")]
+
+    def assert_clock_shows_now(self):
+        # Within a minute either way: the next minute is shown early when it's
+        # under 20 s away at bedtime, and the test itself takes time.
+        shown = "".join((self.run_dir / "clock_shown").read_text().split())
+        now = datetime.now(LONDON)
+        self.assertIn(shown, {(now + timedelta(minutes=k)).strftime("%H%M") for k in (-1, 0, 1)})
+
+    def clock_scenario(self):
+        self.clock_on()
+        out = self.ctl("start")
+        self.assertIn("Dashboard started.", out.stdout, out.stderr)
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="first fetch")
+
+        # Sleep: the image, then the four clock digits on top of it.
+        self.clear_calls()
+        self.props({"com.lab126.powerd.state": "screenSaver"})
+        self.event("goingToScreenSaver 1")
+        self.wait_for(lambda: len(self.digits()) >= 4, what="clock drawn on sleep")
+        calls = self.calls()
+        first_digit = next(i for i, c in enumerate(calls) if c.startswith("digit"))
+        self.assertTrue(any(c.startswith("draw") for c in calls[:first_digit]), calls)
+        xs = clock_positions()
+        self.assertEqual([c.split("x=")[1] for c in calls[first_digit : first_digit + 4]], xs)
+        self.assert_clock_shows_now()
+
+        # About to suspend: wake again within about a minute, for the clock.
+        self.clear_calls()
+        self.props({"com.lab126.powerd.state": "readyToSuspend"})
+        self.event("readyToSuspend 5")
+        self.wait_for(lambda: any("rtcWakeup" in c for c in self.calls()), what="clock wake timer")
+        secs = int([c for c in self.calls() if "rtcWakeup" in c][-1].split()[-1])
+        self.assertTrue(20 <= secs <= 80, secs)
+
+        # Clock wake, no refresh due, and readyToSuspend straight after: deep
+        # sleep is held off briefly, the digits are redrawn, Wi-Fi stays off.
+        self.clear_calls()
+        (self.run_dir / "clock_shown").write_text("9 9 9 9\n")  # as if the screen showed 99:99
+        self.props({"com.lab126.powerd.state": "screenSaver"})
+        self.event("wakeupFromSuspend 0")
+        self.props({"com.lab126.powerd.state": "readyToSuspend"})
+        self.event("readyToSuspend 5")
+        self.wait_for(lambda: "set com.lab126.powerd deferSuspend 2" in self.calls(), what="clock tick")
+        calls = self.calls()
+        self.assertIn("set com.lab126.powerd deferSuspend 10", calls)
+        self.assertGreaterEqual(len(self.digits()), 4)
+        self.assertTrue(any("rtcWakeup" in c for c in calls))
+        self.assertNotIn("curl", calls)
+        self.assertNotIn("set com.lab126.cmd wirelessEnable 1", calls)
+        self.assert_clock_shows_now()
+
+        # Clock ticks are too frequent to log.
+        log = self.log_text()
+        self.assertNotIn("event wakeupFromSuspend", log)
+        self.assertNotIn("event readyToSuspend", log)
+        self.assertNotIn("holding off deep sleep", log)
+
+        # Woken to read: no more clock drawing over the book.
+        self.props({"com.lab126.powerd.state": "active"})
+        self.event("outOfScreenSaver 1")
+        self.wait_for(lambda: not (self.run_dir / "clock_shown").exists(), what="clock stopped")
+
+    def test_clock_without_deep_sleep(self):
+        # Plugged into a computer: no timer wakes, so the periodic check keeps the clock.
+        self.clock_on("TICK=1\n")
+        self.ctl("start")
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="first fetch")
+        self.props({"com.lab126.powerd.state": "screenSaver"})
+        self.event("goingToScreenSaver 1")
+        self.wait_for(lambda: len(self.digits()) >= 4, what="clock drawn on sleep")
+        self.clear_calls()
+        (self.run_dir / "clock_shown").write_text("9 9 9 9\n")
+        self.wait_for(lambda: len(self.digits()) >= 4, timeout=5, what="clock redrawn by the periodic check")
+        self.assert_clock_shows_now()
+        self.assertNotIn("curl", self.calls())
 
     def test_start_without_config(self):
         (self.home / "config.sh").unlink()

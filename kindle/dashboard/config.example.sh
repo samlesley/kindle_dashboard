@@ -13,6 +13,11 @@ DASHBOARD_TOKEN=""
 # Default: every 10 min 06:00-10:00, every 30 min 10:00-22:00, every 2 h overnight.
 SCHEDULE="06:00-10:00=10 10:00-22:00=30 22:00-06:00=120"
 
+# Keep the time in the top right current: 1 on, 0 off. The Kindle wakes
+# briefly each minute to redraw it, without Wi-Fi. With it off, the time
+# there is the time of the last update.
+CLOCK=1
+
 # Seconds to wait after the Kindle goes to sleep before drawing the dashboard,
 # so the normal sleep screen has finished. Raise it if the normal sleep screen
 # ends up on top.

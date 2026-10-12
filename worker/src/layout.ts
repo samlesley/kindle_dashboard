@@ -42,6 +42,13 @@ const NOTICE_TOP = 1192;
 const FOOTER_RULE = 1398;
 const FOOTER_BASE = 1432;
 
+// The time in the top right. The Kindle keeps it current between fetches by
+// pasting one small image per digit over it (see clockCells below and
+// kindle/dashboard/clock/), so its size and position are shared with the Kindle.
+const CLOCK_SIZE = 100;
+const CLOCK_RIGHT = R - 24;
+const CLOCK_BASE = BAND_TOP + BAND_H - 16;
+
 /** Nearest multiple of 2.5 px (keeps character advances on whole pixels). */
 const snap = (size: number) => Math.round(size / 2.5) * 2.5;
 
@@ -118,8 +125,32 @@ function drawHeader(p: Painter, m: DashboardModel): void {
   p.c.fillRect(L, BAND_TOP, CW, BAND_H, BLACK);
   p.text(m.now.weekday, L + 24, BAND_TOP + 37, 37.5, WHITE);
   p.text(m.now.dayMonth, L + 24, BAND_TOP + BAND_H - 16, 100, WHITE);
-  p.text("UPDATED", R - 24, BAND_TOP + 37, 37.5, WHITE, "right");
-  p.text(m.now.hhmm, R - 24, BAND_TOP + BAND_H - 16, 100, WHITE, "right");
+  p.text("TIME", R - 24, BAND_TOP + 37, 37.5, WHITE, "right");
+  p.text(m.now.hhmm, CLOCK_RIGHT, CLOCK_BASE, CLOCK_SIZE, WHITE, "right");
+}
+
+/** Where the Kindle pastes the clock digits: one cell per digit of HH:MM. */
+export interface ClockCells {
+  /** Left edge of each digit's cell, in HH:MM order (the colon is skipped). */
+  xs: number[];
+  top: number;
+  width: number;
+  height: number;
+}
+
+export function clockCells(font: Font): ClockCells {
+  const advance = font.measure("0", CLOCK_SIZE);
+  const left = CLOCK_RIGHT - font.measure("00:00", CLOCK_SIZE);
+  const top = CLOCK_BASE - font.capHeight(CLOCK_SIZE) - 6;
+  return { xs: [0, 1, 3, 4].map((i) => left + i * advance), top, width: advance, height: CLOCK_BASE + 6 - top };
+}
+
+/** One clock digit exactly as drawDashboard draws it, cut to its cell. */
+export function drawClockDigit(font: Font, digit: number): Canvas {
+  const cells = clockCells(font);
+  const c = new Canvas(cells.width, cells.height, BLACK);
+  font.draw(c, String(digit), 0, CLOCK_BASE - cells.top, CLOCK_SIZE, WHITE);
+  return c;
 }
 
 function drawTrains(p: Painter, m: DashboardModel): void {
@@ -281,7 +312,7 @@ function drawNotices(p: Painter, notices: string[]): number {
 function drawFooter(p: Painter, m: DashboardModel, contentBottom: number): void {
   const sun = m.weather.ok ? m.weather.data : null;
   p.text(`SUNRISE ${sun?.sunrise ?? "--:--"} SUNSET ${sun?.sunset ?? "--:--"}`, L, FOOTER_BASE, 32.5);
-  p.text(`NEXT ${m.nextRefresh ?? "--:--"} BATT ${m.battery ?? "--"}%`, R, FOOTER_BASE, 32.5, BLACK, "right");
+  p.text(`UPDATED ${m.now.hhmm} NEXT ${m.nextRefresh ?? "--:--"} BATT ${m.battery ?? "--"}%`, R, FOOTER_BASE, 32.5, BLACK, "right");
   p.c.hLine(L, R, FOOTER_RULE, 2, BLACK);
 
   if (!m.headline) return;
