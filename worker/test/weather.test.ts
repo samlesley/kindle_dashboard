@@ -52,10 +52,37 @@ describe("weather", () => {
     expect(w.notices[0]).toBe("RAIN NOW, PEAK 18:00. TAKE AN UMBRELLA.");
   });
 
-  it("looks at tomorrow after the rain window closes", () => {
-    const w = buildWeather(sampleForecast(), at("2026-10-09T21:30:00Z"), cfg); // 22:30 BST
-    expect(w.notices[0]).toBe("RAIN TOMORROW FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.");
-    expect(w.sunrise).toBe("07:31"); // tomorrow's, as today's sunset has passed
+  it("describes tomorrow from 17:00, rain and all", () => {
+    const before = buildWeather(sampleForecast(), at("2026-10-09T15:59:00Z"), cfg); // 16:59 BST
+    expect(before.notices[0]).toBe("RAIN NOW, PEAK 18:00. TAKE AN UMBRELLA.");
+    const w = buildWeather(sampleForecast(), at("2026-10-09T16:00:00Z"), cfg); // 17:00 BST
+    expect(w.notices).toEqual(["TOMORROW: CLOUDY, 7° TO 13°. RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA."]);
+    const late = buildWeather(sampleForecast(), at("2026-10-09T21:30:00Z"), cfg); // 22:30 BST
+    expect(late.notices).toEqual(w.notices);
+    expect(late.sunrise).toBe("07:31"); // tomorrow's, as today's sunset has passed
+  });
+
+  it("describes tomorrow even when nothing is worth a warning", () => {
+    const f = sampleForecast();
+    f.hourly.precipitation_probability = f.hourly.precipitation_probability.map(() => 10);
+    f.hourly.weather_code = f.hourly.weather_code.map(() => 2);
+    const w = buildWeather(f, at("2026-10-09T17:30:00Z"), cfg); // 18:30 BST
+    expect(w.notices).toEqual(["TOMORROW: PARTLY CLOUDY, 7° TO 13°. DRY."]);
+  });
+
+  it("adds cold and hot warnings to tomorrow's line", () => {
+    const cold = buildWeather(sampleForecast({ tempOffset: -6 }), at("2026-10-09T19:00:00Z"), cfg); // 20:00 BST
+    expect(cold.notices).toEqual(["TOMORROW: CLOUDY, 1° TO 7°. RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA. WRAP UP WARM."]);
+    const hot = buildWeather(sampleForecast({ tempOffset: 11 }), at("2026-10-09T19:00:00Z"), cfg);
+    expect(hot.notices[0]).toMatch(/^TOMORROW: CLOUDY, 18° TO 24°\. .* TAKE WATER\.$/);
+  });
+
+  it("names a wet day by its rain when most hours are wet", () => {
+    const f = sampleForecast();
+    f.hourly.weather_code = f.hourly.weather_code.map(() => 61);
+    f.hourly.precipitation_probability = f.hourly.precipitation_probability.map(() => 30);
+    const w = buildWeather(f, at("2026-10-09T19:00:00Z"), cfg);
+    expect(w.notices).toEqual(["TOMORROW: LIGHT RAIN, 7° TO 13°."]); // not "DRY", though below the rain-chance threshold
   });
 
   it("keeps the boxes within today", () => {
@@ -80,10 +107,6 @@ describe("weather", () => {
     const w = buildWeather(sampleForecast({ tempOffset: -5 }), at("2026-10-09T11:00:00Z"), cfg);
     expect(w.low).toEqual({ temp: 2, at: "06:00" });
     expect(w.notices.some((n) => n.startsWith("LOW"))).toBe(false);
-
-    // Late evening looks ahead to tomorrow morning.
-    const night = buildWeather(sampleForecast({ tempOffset: -6 }), at("2026-10-09T21:30:00Z"), cfg); // 22:30 BST
-    expect(night.notices).toContain("LOW OF 1° TOMORROW AT 06:00. WRAP UP WARM.");
   });
 
   it("rejects a forecast that doesn't cover now", () => {

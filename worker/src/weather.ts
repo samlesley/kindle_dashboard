@@ -172,20 +172,14 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
       next < 0 ? `${cond}. STAYING DRY.` : `${cond}. ${isSnowCode(h.weather_code[next]) ? "SNOW" : "RAIN"} FROM ${clockOf(h.time[next])}.`;
   }
 
-  // Notices look ahead: the rest of today, or through tomorrow once it is
-  // past the end of the rain window (22:00).
-  const notices: string[] = [];
-  const lookTomorrow = now.hour >= cfg.rainToHour;
-  const rainDate = lookTomorrow ? h.time.slice(i0).map(dateOf).find((d) => d !== now.date) : now.date;
-  const aheadEnd = lastOfDate(rainDate, lookTomorrow ? dayEnd : i0);
-  const tomorrow = (i: number) => (dateOf(h.time[i]) !== now.date ? " TOMORROW" : "");
-  const rainHours: number[] = [];
-  for (let i = i0; i < h.time.length; i++) {
-    if (dateOf(h.time[i]) !== rainDate) continue;
-    const hr = hourOf(h.time[i]);
-    if (hr >= cfg.rainFromHour && hr <= cfg.rainToHour && chance(i) >= thr) rainHours.push(i);
-  }
-  if (rainHours.length > 0) {
+  /** Rain (or snow) notice for the rain hours within [from, to], or null if it stays dry. */
+  const rainNotice = (from: number, to: number): string | null => {
+    const rainHours: number[] = [];
+    for (let i = from; i <= to; i++) {
+      const hr = hourOf(h.time[i]);
+      if (hr >= cfg.rainFromHour && hr <= cfg.rainToHour && chance(i) >= thr) rainHours.push(i);
+    }
+    if (rainHours.length === 0) return null;
     const first = rainHours[0];
     let peak = first;
     for (const i of rainHours) {
@@ -193,17 +187,57 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
     }
     const snow = isSnowCode(h.weather_code[peak]);
     const what = snow ? "SNOW" : "RAIN";
-    const when = first === i0 ? `${what} NOW` : `${what}${tomorrow(first)} FROM ${clockOf(h.time[first])}`;
+    const when = first === i0 ? `${what} NOW` : `${what} FROM ${clockOf(h.time[first])}`;
     const peakText = peak === first ? "" : `, PEAK ${clockOf(h.time[peak])}`;
-    notices.push(`${when}${peakText}. ${snow ? "TAKE CARE ON PAVEMENTS." : "TAKE AN UMBRELLA."}`);
-  }
-  const coldest = extreme(i0, aheadEnd, -1);
-  const warmest = extreme(i0, aheadEnd, 1);
-  if (roundTemp(temp(coldest)) < cfg.coldBelowC) {
-    notices.push(`LOW OF ${roundTemp(temp(coldest))}°${tomorrow(coldest)} AT ${clockOf(h.time[coldest])}. WRAP UP WARM.`);
-  }
-  if (roundTemp(temp(warmest)) > cfg.hotAboveC) {
-    notices.push(`HIGH OF ${roundTemp(temp(warmest))}°${tomorrow(warmest)} AT ${clockOf(h.time[warmest])}. TAKE WATER.`);
+    return `${when}${peakText}. ${snow ? "TAKE CARE ON PAVEMENTS." : "TAKE AN UMBRELLA."}`;
+  };
+
+  /** The usual weather over the rain hours of [from, to]: wet or dry, whichever covers more hours, then the commonest code. */
+  const typicalCode = (from: number, to: number): number => {
+    const wetCodes: number[] = [];
+    const dryCodes: number[] = [];
+    for (let i = from; i <= to; i++) {
+      const hr = hourOf(h.time[i]);
+      if (hr >= cfg.rainFromHour && hr <= cfg.rainToHour) (isPrecipCode(h.weather_code[i]) ? wetCodes : dryCodes).push(h.weather_code[i]);
+    }
+    const codes = wetCodes.length > dryCodes.length ? wetCodes : dryCodes;
+    const counts = new Map<number, number>();
+    for (const c of codes) counts.set(c, (counts.get(c) ?? 0) + 1);
+    let best = h.weather_code[from];
+    let bestCount = 0;
+    for (const [c, n] of counts) {
+      if (n > bestCount || (n === bestCount && c > best)) [best, bestCount] = [c, n];
+    }
+    return best;
+  };
+
+  // Notices. Until the evening: warnings about the rest of today, only when
+  // a rule applies. From the evening: always one line about tomorrow.
+  const notices: string[] = [];
+  const nextDay = dayEnd + 1;
+  if (now.hour >= cfg.tomorrowFromHour && nextDay < h.time.length) {
+    const nextEnd = lastOfDate(dateOf(h.time[nextDay]), nextDay);
+    const lo = roundTemp(temp(extreme(nextDay, nextEnd, -1)));
+    const hi = roundTemp(temp(extreme(nextDay, nextEnd, 1)));
+    const code = typicalCode(nextDay, nextEnd);
+    const parts = [`TOMORROW: ${describeCode(code)}, ${lo}° TO ${hi}°.`];
+    const rain = rainNotice(nextDay, nextEnd);
+    if (rain) parts.push(rain);
+    else if (!isPrecipCode(code)) parts.push("DRY.");
+    if (lo < cfg.coldBelowC) parts.push("WRAP UP WARM.");
+    if (hi > cfg.hotAboveC) parts.push("TAKE WATER.");
+    notices.push(parts.join(" "));
+  } else {
+    const rain = rainNotice(i0, dayEnd);
+    if (rain) notices.push(rain);
+    const coldest = extreme(i0, dayEnd, -1);
+    const warmest = extreme(i0, dayEnd, 1);
+    if (roundTemp(temp(coldest)) < cfg.coldBelowC) {
+      notices.push(`LOW OF ${roundTemp(temp(coldest))}° AT ${clockOf(h.time[coldest])}. WRAP UP WARM.`);
+    }
+    if (roundTemp(temp(warmest)) > cfg.hotAboveC) {
+      notices.push(`HIGH OF ${roundTemp(temp(warmest))}° AT ${clockOf(h.time[warmest])}. TAKE WATER.`);
+    }
   }
 
   // Sunrise/sunset: today's, or tomorrow's once today's sunset has passed.

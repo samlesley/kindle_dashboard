@@ -168,6 +168,7 @@ ignores). Neither is ever written to `wrangler.toml`.
 | `RAIN_FROM_HOUR`, `RAIN_TO_HOUR` | `7`, `22` | …within these hours (inclusive). |
 | `COLD_BELOW_C` | `3` | Cold notice when the low is below this. |
 | `HOT_ABOVE_C` | `22` | Hot notice when the high is above this. |
+| `TOMORROW_FROM_HOUR` | `17` | From this hour until midnight, the notice box shows tomorrow's weather. |
 | `SHOW_HEADLINE` | `true` | `false` hides the BBC line. |
 
 Secrets: `ACCESS_TOKEN` (required), `RDM_KEY` (for live trains).
@@ -208,13 +209,16 @@ forecast is kept for up to 24 h and the heading says `AS OF hh:mm`):
 - The summary line looks 18 hours ahead.
 - The hourly strip starts with `NOW`, then every 3 hours on the 00/03/06…
   grid. Each gauge segment is 20% chance of rain.
-- Notices, only when a rule applies. They look at the rest of today, and
-  switch to tomorrow from 22:00:
+- Notices, until 17:00: warnings about the rest of today, only when a rule
+  applies:
   - wet: rain chance ≥ 50% between 07:00 and 22:00, e.g.
     `RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
   - cold: a low below 3° still to come, e.g. `LOW OF 1° AT 06:00. WRAP UP WARM.`
-    (or `LOW OF 1° TOMORROW AT 06:00` late in the evening)
   - hot: a high above 22° still to come, e.g. `HIGH OF 24° AT 15:00. TAKE WATER.`
+- From 17:00 to midnight the notice box always shows tomorrow instead: the
+  usual weather between 07:00 and 22:00, the low and high, rain by the same rule
+  (or `DRY.`), and the cold and hot warnings, e.g.
+  `TOMORROW: CLOUDY, 7° TO 13°. RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
 
 **Headline:** the first `<item>` title from `feeds.bbci.co.uk/news/rss.xml`,
 cached for 30 minutes. It wraps onto two lines when there's room.

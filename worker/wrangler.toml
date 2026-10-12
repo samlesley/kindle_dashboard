@@ -45,6 +45,7 @@ RAIN_FROM_HOUR = "7"     # ...between these hours (inclusive)
 RAIN_TO_HOUR = "22"
 COLD_BELOW_C = "3"       # cold notice when the low is below this
 HOT_ABOVE_C = "22"       # hot notice when the high is above this
+TOMORROW_FROM_HOUR = "17" # from this hour the notice box shows tomorrow's weather
 
 # "true" shows the BBC top story line, "false" hides it.
 SHOW_HEADLINE = "true"

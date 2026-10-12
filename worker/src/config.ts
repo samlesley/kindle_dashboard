@@ -27,6 +27,7 @@ export interface Env {
   RAIN_TO_HOUR?: string;
   COLD_BELOW_C?: string;
   HOT_ABOVE_C?: string;
+  TOMORROW_FROM_HOUR?: string;
   SHOW_HEADLINE?: string;
 }
 
@@ -49,6 +50,7 @@ export interface Config {
   rainToHour: number;
   coldBelowC: number;
   hotAboveC: number;
+  tomorrowFromHour: number;
   showHeadline: boolean;
 }
 
@@ -86,6 +88,7 @@ export function loadConfig(env: Env): Config {
     rainToHour: num(env.RAIN_TO_HOUR, 22),
     coldBelowC: num(env.COLD_BELOW_C, 3),
     hotAboveC: num(env.HOT_ABOVE_C, 22),
+    tomorrowFromHour: num(env.TOMORROW_FROM_HOUR, 17),
     showHeadline: bool(env.SHOW_HEADLINE, true),
   };
 }
