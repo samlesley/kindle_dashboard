@@ -16,6 +16,7 @@ load_config() {
     DRAW_DELAY=2
     WIFI_TIMEOUT=30
     FETCH_TIMEOUT=20
+    TICK=30 # seconds between checks while on the sleep screen without deep sleep
     # The working copy is used once running, so the USB storage can be
     # unavailable (e.g. plugged into a computer) without breaking anything.
     if [ -f "$DASH_RUN/config.sh" ]; then

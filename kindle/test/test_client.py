@@ -488,6 +488,23 @@ class Simulation(unittest.TestCase):
         self.assertIn("still says YOUR-SUBDOMAIN", out.stdout)
         self.assertNotEqual(out.returncode, 0)
 
+    def test_refreshes_without_deep_sleep(self):
+        # Plugged into a computer the Kindle stays on the sleep screen: no
+        # readyToSuspend or wakeupFromSuspend. The periodic check refreshes.
+        with open(self.home / "config.sh", "a") as f:
+            f.write("TICK=1\n")
+        self.ctl("start")
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="first fetch")
+        self.props({"com.lab126.powerd.state": "screenSaver"})
+        self.event("goingToScreenSaver 1")
+        self.wait_for(lambda: any("rtcWakeup" in c for c in self.calls()), what="wake timer set on sleep")
+        self.clear_calls()
+        (self.run_dir / "next_epoch").write_text(str(int(time.time()) - 5))
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), timeout=10, what="timed refresh")
+        self.assertTrue(any(c.startswith("draw") for c in self.calls()))
+        self.assertIn("refresh due while on the sleep screen", self.log_text())
+        self.assertIn("power: ", self.log_text())
+
     def test_start_without_config(self):
         (self.home / "config.sh").unlink()
         out = self.ctl("start")

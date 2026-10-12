@@ -22,6 +22,10 @@ for the Kindle's power events and does nothing in between:
   sets the next wake-up, and lets the Kindle sleep again.
 - **Woken by you to read:** it stops any fetch and puts Wi-Fi back the way
   you had it.
+- **On the sleep screen without deep sleep:** while plugged into a computer,
+  the Kindle stays on the sleep screen instead of entering deep sleep, so the
+  wake-up timer never fires. A light check every 30 seconds refreshes on time
+  in that case. In deep sleep the check is frozen and costs nothing.
 
 Refreshes run every 10 minutes from 06:00 to 10:00, every 30 minutes from 10:00
 to 22:00, and every 2 hours from 22:00 to 06:00. Times are UK time; the script

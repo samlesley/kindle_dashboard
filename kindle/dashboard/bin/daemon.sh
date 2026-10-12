@@ -10,7 +10,10 @@
 #   wakeupFromSuspend   woken from deep sleep: if it was the timer, refresh
 #   outOfScreenSaver    woken to read: stop any fetch, restore Wi-Fi
 #
-# Between events nothing runs, so it costs nothing while the Kindle sleeps.
+# The Kindle doesn't always enter deep sleep (for example while plugged into
+# a computer it stays on the sleep screen), so a light check every TICK
+# seconds also refreshes when one is due. In deep sleep that check is frozen
+# with everything else and costs nothing.
 
 . "$(dirname "$0")/lib.sh"
 load_config
@@ -50,10 +53,12 @@ on_sleep() {
         wifi_enabled
         echo "$WIFI" > "$DASH_RUN/wifi_was"
     fi
+    log "power: $(prop com.lab126.powerd status | tr '\n' ' ' | cut -c1-200)"
     if due 60 || [ ! -s "$DASH_RUN/dashboard.png" ]; then
         start_update scheduled
     else
         wifi_set 0
+        set_wake_timer
     fi
     # Give the stock sleep screen a moment to finish drawing, then cover it.
     (
@@ -97,7 +102,20 @@ on_read() {
     fi
 }
 
+# Refresh on time even when the Kindle stays on the sleep screen without
+# entering deep sleep (no readyToSuspend / wakeupFromSuspend then).
+ticker() {
+    while :; do
+        sleep "$TICK"
+        if due 0 && ! busy && asleep; then
+            log "refresh due while on the sleep screen (not in deep sleep)"
+            start_update scheduled
+        fi
+    done
+}
+
 start_update start
+ticker &
 
 while :; do
     lipc-wait-event -m com.lab126.powerd goingToScreenSaver,outOfScreenSaver,readyToSuspend,wakeupFromSuspend 2> /dev/null |
