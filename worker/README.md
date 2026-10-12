@@ -159,7 +159,8 @@ ignores). Neither is ever written to `wrangler.toml`.
 | `STATION_NAME` | `ALEXANDRA PARADE` | Shown in the departures heading. |
 | `FILTER_CRS` | `PTK` | Only services calling at Partick. |
 | `HEADING_TO` | `QUEEN ST / PARTICK` | Shown after the station name. |
-| `WALK_MINUTES` | `4` | Hides trains expected sooner than this; leave-by = expected − this. |
+| `WALK_MINUTES` | `4` | Shown in the heading (`WALK 4 MIN`). Hides trains expected sooner than this. |
+| `LEAVE_BY_MINUTES` | `5` | Leave-by = scheduled time − this. It stays put when a train runs late. |
 | `LIVE_TRAINS` | `true` | `true` uses live data, but only when `RDM_KEY` is set. Otherwise, or when `false`, mock data is used. |
 | `MOCK_SCENARIO` | `normal` | `normal`, `delayed` or `cancelled`. |
 | `LDB_URL` | `https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard` | Live Departure Board endpoint, without `/{crs}`. |
@@ -183,7 +184,8 @@ with no estimate, the scheduled time is used instead. Each row shows:
 - the scheduled time;
 - the status: `ON TIME`, `EXP hh:mm` (boxed if late), `DELAYED` (boxed) or
   `CANCELLED` (reversed out);
-- leave-by (expected time minus the walk; `--:--` when cancelled);
+- leave-by: the scheduled time minus `LEAVE_BY_MINUTES` (5). It doesn't move
+  when a train runs late, since a delay can shrink again. `--:--` when cancelled;
 - the destination underneath.
 
 A service message (`INFO`) appears only when the feed includes one. It takes

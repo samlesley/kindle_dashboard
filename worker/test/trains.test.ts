@@ -13,6 +13,7 @@ const svc = (std: string, etd: string, dest: string, calls: string[] | null, ext
 const opts = (now: string) => ({
   filterCrs: "PTK",
   walkMinutes: 4,
+  leaveByMinutes: 5,
   now: Number(now.slice(0, 2)) * 60 + Number(now.slice(3)),
 });
 
@@ -30,16 +31,16 @@ describe("departures", () => {
     };
     const rows = buildDepartures(board, opts("06:44"));
     expect(rows).toEqual([
-      { scheduled: "06:56", status: "on-time", statusText: "ON TIME", leaveBy: "06:52", destination: "MILNGAVIE" },
-      { scheduled: "07:26", status: "late", statusText: "EXP 07:31", leaveBy: "07:27", destination: "MILNGAVIE" },
-      { scheduled: "07:56", status: "delayed", statusText: "DELAYED", leaveBy: "07:52", destination: "MILNGAVIE" },
+      { scheduled: "06:56", status: "on-time", statusText: "ON TIME", leaveBy: "06:51", destination: "MILNGAVIE" },
+      { scheduled: "07:26", status: "late", statusText: "EXP 07:31", leaveBy: "07:21", destination: "MILNGAVIE" },
+      { scheduled: "07:56", status: "delayed", statusText: "DELAYED", leaveBy: "07:51", destination: "MILNGAVIE" },
     ]);
   });
 
   it("uses the expected time for the walk cut-off", () => {
     // Scheduled 2 min away but running 5 min late: still catchable.
     const board: LdbBoard = { trainServices: [svc("06:46", "06:51", "Milngavie", ["PTK"])] };
-    expect(buildDepartures(board, opts("06:44"))[0]).toMatchObject({ statusText: "EXP 06:51", leaveBy: "06:47" });
+    expect(buildDepartures(board, opts("06:44"))[0]).toMatchObject({ statusText: "EXP 06:51", leaveBy: "06:41" });
   });
 
   it("shows cancellations without a leave-by time", () => {
@@ -77,7 +78,7 @@ describe("departures", () => {
 describe("mock boards", () => {
   const now = 6 * 60 + 44;
   const rows = (scenario: "normal" | "delayed" | "cancelled") =>
-    buildDepartures(mockBoard(scenario, now, 4), { filterCrs: "PTK", walkMinutes: 4, now });
+    buildDepartures(mockBoard(scenario, now, 4), { filterCrs: "PTK", walkMinutes: 4, leaveByMinutes: 5, now });
 
   it("normal: three on-time trains to Milngavie, no message", () => {
     expect(rows("normal").map((r) => [r.scheduled, r.statusText])).toEqual([

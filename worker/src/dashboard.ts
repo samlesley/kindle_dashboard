@@ -76,7 +76,12 @@ export async function gatherDashboard(cfg: Config, deps: Deps, at: Date, params:
       ? await fetchLiveBoard(cfg.ldbUrl, cfg.stationCrs, cfg.filterCrs, deps.rdmKey!, deps.fetch)
       : mockBoard(scenario, now.minutes, cfg.walkMinutes);
     return {
-      departures: buildDepartures(board, { filterCrs: cfg.filterCrs, walkMinutes: cfg.walkMinutes, now: now.minutes }),
+      departures: buildDepartures(board, {
+        filterCrs: cfg.filterCrs,
+        walkMinutes: cfg.walkMinutes,
+        leaveByMinutes: cfg.leaveByMinutes,
+        now: now.minutes,
+      }),
       message: serviceMessage(board),
     };
   })();

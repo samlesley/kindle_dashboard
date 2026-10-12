@@ -49,14 +49,17 @@ export interface Departure {
   status: TrainStatus;
   /** ON TIME, EXP 07:03, DELAYED, CANCELLED, or the feed's own wording. */
   statusText: string;
-  /** Expected (or scheduled) time minus the walk; null when cancelled. */
+  /** Scheduled time minus `leaveByMinutes`, even when late; null when cancelled. */
   leaveBy: string | null;
   destination: string;
 }
 
 export interface BoardOptions {
   filterCrs: string;
+  /** Trains expected sooner than this are left out. */
   walkMinutes: number;
+  /** Leave-by is the scheduled time minus this. */
+  leaveByMinutes: number;
   /** Minutes since local midnight. */
   now: number;
   max?: number;
@@ -140,7 +143,7 @@ export function buildDepartures(board: LdbBoard, opts: BoardOptions): Departure[
         scheduled: formatMinutes(std),
         status,
         statusText,
-        leaveBy: cancelled ? null : formatMinutes((expected ?? std) - opts.walkMinutes),
+        leaveBy: cancelled ? null : formatMinutes(std - opts.leaveByMinutes),
         destination,
       },
     });

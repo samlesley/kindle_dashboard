@@ -18,6 +18,7 @@ export interface Env {
   FILTER_CRS?: string;
   HEADING_TO?: string;
   WALK_MINUTES?: string;
+  LEAVE_BY_MINUTES?: string;
   LIVE_TRAINS?: string;
   MOCK_SCENARIO?: string;
   LDB_URL?: string;
@@ -39,6 +40,7 @@ export interface Config {
   filterCrs: string;
   headingTo: string;
   walkMinutes: number;
+  leaveByMinutes: number;
   liveTrains: boolean;
   mockScenario: MockScenario;
   ldbUrl: string;
@@ -75,6 +77,7 @@ export function loadConfig(env: Env): Config {
     filterCrs: (env.FILTER_CRS || "PTK").toUpperCase(),
     headingTo: (env.HEADING_TO || "QUEEN ST / PARTICK").toUpperCase(),
     walkMinutes: Math.max(0, Math.round(num(env.WALK_MINUTES, 4))),
+    leaveByMinutes: Math.max(0, Math.round(num(env.LEAVE_BY_MINUTES, 5))),
     liveTrains: bool(env.LIVE_TRAINS, false),
     mockScenario: parseScenario(env.MOCK_SCENARIO) ?? "normal",
     ldbUrl: (env.LDB_URL || "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard").replace(/\/+$/, ""),
