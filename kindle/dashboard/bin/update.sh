@@ -56,14 +56,23 @@ fetch() {
         --cacert "$CA_BUNDLE" -o "$DASH_RUN/fetch.png" "$url" 2> "$DASH_RUN/curl.err" &
     CURL_PID=$!
     # Watchdog in case curl gets stuck where its own --max-time can't act.
-    (sleep $((FETCH_TIMEOUT + 10)) && kill -KILL "$CURL_PID") 2> /dev/null &
+    # It only kills if the marker still names this curl, so a watchdog that
+    # outlives the fetch can never hit an unrelated process that later
+    # reuses the PID.
+    echo "$CURL_PID" > "$DASH_RUN/fetching"
+    (
+        sleep $((FETCH_TIMEOUT + 10))
+        [ "$(cat "$DASH_RUN/fetching" 2> /dev/null)" = "$CURL_PID" ] && kill -KILL "$CURL_PID"
+    ) 2> /dev/null &
     WATCHDOG=$!
     wait "$CURL_PID"
     rc=$?
+    rm -f "$DASH_RUN/fetching"
     kill "$WATCHDOG" 2> /dev/null
     CURL_PID=""
     if [ "$rc" -ne 0 ]; then
-        log "fetch failed (curl exit $rc): $(head -c 300 "$DASH_RUN/curl.err" | tr '\n' ' ' | redact)"
+        host=${DASHBOARD_URL#https://}
+        log "fetch failed (curl exit $rc) from ${host%%[/?]*}: $(head -c 300 "$DASH_RUN/curl.err" | tr '\n' ' ' | redact)"
         return 1
     fi
     size=$(wc -c < "$DASH_RUN/fetch.png")

@@ -431,7 +431,8 @@ class Simulation(unittest.TestCase):
 
         # The token never reaches the log.
         log = self.log_text()
-        self.assertIn("fetch failed (curl exit 22)", log)
+        self.assertIn("fetch failed (curl exit 22) from example.test:", log)
+        self.assertIn("dashboard address: example.test", log)
         self.assertNotIn(TOKEN, log)
 
     def test_falls_back_to_kindle_curl(self):
@@ -478,6 +479,14 @@ class Simulation(unittest.TestCase):
         finally:
             if proc.poll() is None:
                 proc.kill()
+
+    def test_start_rejects_placeholder_url(self):
+        (self.home / "config.sh").write_text(
+            f'DASHBOARD_URL="https://kindle-dashboard.YOUR-SUBDOMAIN.workers.dev/"\nDASHBOARD_TOKEN="{TOKEN}"\n'
+        )
+        out = self.ctl("start")
+        self.assertIn("still says YOUR-SUBDOMAIN", out.stdout)
+        self.assertNotEqual(out.returncode, 0)
 
     def test_start_without_config(self):
         (self.home / "config.sh").unlink()

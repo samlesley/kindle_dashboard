@@ -20,6 +20,11 @@ check_config() {
     fi
     load_config
     case "$DASHBOARD_URL" in
+        *YOUR-SUBDOMAIN*)
+            echo "DASHBOARD_URL in config.sh still says YOUR-SUBDOMAIN."
+            echo "Put your own workers.dev address there."
+            return 1
+            ;;
         https://*) ;;
         *)
             echo "DASHBOARD_URL in config.sh must start with https://"
@@ -55,21 +60,35 @@ prepare_run() {
     load_config
 }
 
+cmdline() { # pid -> CMD, its command line with spaces
+    CMD=$(tr '\000' ' ' 2>/dev/null < "/proc/$1/cmdline") || CMD=""
+}
+
+# The saved process group is only trusted if its leader is still our daemon:
+# after a crash the number could have been reused by something else.
+daemon_pgid() { # -> PG, or empty
+    PG=$(cat "$DASH_RUN/daemon.pgid" 2>/dev/null)
+    case "$PG" in '' | *[!0-9]*) PG=""; return 1 ;; esac
+    cmdline "$PG"
+    case "$CMD" in
+        *"$DASH_RUN/daemon.sh"*) return 0 ;;
+        *) PG=""; return 1 ;;
+    esac
+}
+
 daemon_running() {
-    local pg
-    pg=$(cat "$DASH_RUN/daemon.pgid" 2>/dev/null)
-    [ -n "$pg" ] && kill -0 "$pg" 2>/dev/null
+    daemon_pgid
 }
 
 # Anything of ours still running from an earlier Start, Stop or Update Now
 # (for example one that got stuck): stop it so only one copy runs.
 kill_strays() {
-    local d pid cmd
+    local d pid
     for d in /proc/[0-9]*; do
         pid=${d#/proc/}
         [ "$pid" = "$$" ] && continue
-        cmd=$(tr '\000' ' ' < "$d/cmdline" 2>/dev/null) || continue
-        case "$cmd" in
+        cmdline "$pid"
+        case "$CMD" in
             *"$DASH_RUN/daemon.sh"* | *"$DASH_RUN/update.sh"* | *"$DASH_RUN/curl "* | *"dashboard/bin/ctl.sh"*)
                 kill -KILL "$pid" 2>/dev/null
                 ;;
@@ -78,14 +97,12 @@ kill_strays() {
 }
 
 stop_daemon() {
-    local pg
-    pg=$(cat "$DASH_RUN/daemon.pgid" 2>/dev/null)
-    if [ -n "$pg" ]; then
+    if daemon_pgid; then
         # The daemon leads its own process group: this stops it, its event
         # listener and any fetch in progress.
-        kill -TERM -"$pg" 2>/dev/null
+        kill -TERM -"$PG" 2>/dev/null
         sleep 1
-        kill -KILL -"$pg" 2>/dev/null
+        kill -KILL -"$PG" 2>/dev/null
     fi
     kill_strays
     rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid"
@@ -100,6 +117,8 @@ case "$1" in
         check_config || exit 1
         stop_daemon
         prepare_run
+        host=${DASHBOARD_URL#https://}
+        log "dashboard address: ${host%%[/?]*}"
         if command -v setsid > /dev/null 2>&1; then
             setsid sh "$DASH_RUN/daemon.sh" < /dev/null > /dev/null 2>&1 &
         else
