@@ -24,5 +24,5 @@ CLOCK=1
 DRAW_DELAY=2
 
 # Give up on Wi-Fi or the download after this many seconds (keeps wakes short).
-WIFI_TIMEOUT=30
+WIFI_TIMEOUT=60
 FETCH_TIMEOUT=20

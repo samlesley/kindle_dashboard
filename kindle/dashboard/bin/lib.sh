@@ -14,7 +14,7 @@ load_config() {
     DASHBOARD_TOKEN=""
     SCHEDULE="06:00-10:00=10 10:00-22:00=30 22:00-06:00=120"
     DRAW_DELAY=2
-    WIFI_TIMEOUT=30
+    WIFI_TIMEOUT=60
     FETCH_TIMEOUT=20
     CLOCK=1
     TICK=30 # seconds between checks while on the sleep screen without deep sleep

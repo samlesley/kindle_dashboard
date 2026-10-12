@@ -109,7 +109,7 @@ automatically, so the system partition is never modified.
 | `SCHEDULE` | `06:00-10:00=10 10:00-22:00=30 22:00-06:00=120` | Refresh bands, `START-END=MINUTES`, in UK time. |
 | `CLOCK` | `1` | `1` keeps the time in the top right current (a short wake each minute, no Wi-Fi). `0` turns that off. |
 | `DRAW_DELAY` | `2` | Seconds to wait after the Kindle goes to sleep before drawing. |
-| `WIFI_TIMEOUT` | `30` | Give up on Wi-Fi after this many seconds. |
+| `WIFI_TIMEOUT` | `60` | Give up on Wi-Fi after this many seconds. |
 | `FETCH_TIMEOUT` | `20` | Give up on the download after this many seconds. |
 
 Tap **Dashboard: Start** after changing anything.
@@ -149,7 +149,7 @@ anything you'd rather not share.
 | Start leaves a blank screen and no `start requested` line appears in the log | Start didn't run. Tap the top of the screen, then Home, and tap Dashboard: Start again. |
 | `bundled curl could not run here` | The bundled curl didn't run on this Kindle, so the client fell back to the Kindle's own, which Cloudflare refuses. Tell me what the log says. |
 | `fetch failed (curl exit 22)` with `403` | The token in `config.sh` doesn't match the Worker's `ACCESS_TOKEN`. |
-| `Wi-Fi did not connect within 30s` | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
+| `Wi-Fi did not connect within 60s` | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
 | Footer `NEXT` time is in the past | The last refresh failed; the log says why. |
 | The screen doesn't change overnight or between refreshes | Look for `wake timer set` before each refresh. If it's there but no `timer wake: refresh due` follows, the wake timer isn't working on this firmware. Tell me. |
 | The clock stops between refreshes | Check the `clock: redrawn` count in the log. If it stays at 0 or 1, the Kindle isn't waking each minute. Tell me, and set `CLOCK=0` meanwhile. |
