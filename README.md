@@ -4,7 +4,7 @@ A live departures and weather screen for a jailbroken Kindle Paperwhite (10th ge
 
 | Part | Folder | Status |
 | --- | --- | --- |
-| 1. Cloudflare Worker that draws the screen as a PNG | [`worker/`](worker/README.md) | Ready for review |
-| 2. Kindle client that fetches and shows it | `kindle/` | Not started |
+| 1. Cloudflare Worker that draws the screen as a PNG | [`worker/`](worker/README.md) | Deployed |
+| 2. Kindle client that shows it as the sleep screen | [`kindle/`](kindle/README.md) | Ready for testing on the device |
 
 ![Sample render](worker/preview/normal.png)

@@ -1,0 +1,116 @@
+#!/bin/sh
+# Entry point for the scriptlets in the Kindle's documents folder.
+#
+#   ctl.sh start    (re)start the dashboard in the background
+#   ctl.sh stop     stop it
+#   ctl.sh update   fetch now and show the result for a few seconds
+#
+# Scriptlets show this script's output on screen, so messages are short.
+
+BIN=$(cd "$(dirname "$0")" && pwd)
+DASH_HOME=${DASH_HOME:-$(dirname "$BIN")}
+. "$BIN/lib.sh"
+
+check_config() {
+    if [ ! -f "$DASH_HOME/config.sh" ]; then
+        echo "No settings file found."
+        echo "Copy dashboard/config.example.sh to dashboard/config.sh"
+        echo "and fill in your Worker URL and token (see README)."
+        return 1
+    fi
+    load_config
+    case "$DASHBOARD_URL" in
+        https://*) ;;
+        *)
+            echo "DASHBOARD_URL in config.sh must start with https://"
+            return 1
+            ;;
+    esac
+    if [ -z "$DASHBOARD_TOKEN" ]; then
+        echo "DASHBOARD_TOKEN in config.sh is empty."
+        return 1
+    fi
+}
+
+# Copy everything needed into RAM, so the dashboard keeps working while the
+# USB storage is lent to a computer.
+prepare_run() {
+    mkdir -p "$DASH_RUN"
+    cp "$BIN/lib.sh" "$BIN/daemon.sh" "$BIN/update.sh" "$DASH_RUN/"
+    tr -d '\r' < "$DASH_HOME/config.sh" > "$DASH_RUN/config.sh"
+    cp "$DASH_HOME/certs/cacert.pem" "$DASH_RUN/cacert.pem"
+    if [ ! -s "$DASH_RUN/dashboard.png" ] && [ -s "$DASH_HOME/cache/dashboard.png" ]; then
+        cp "$DASH_HOME/cache/dashboard.png" "$DASH_RUN/dashboard.png"
+    fi
+    load_config
+}
+
+daemon_running() {
+    local pg
+    pg=$(cat "$DASH_RUN/daemon.pgid" 2>/dev/null)
+    [ -n "$pg" ] && kill -0 "$pg" 2>/dev/null
+}
+
+stop_daemon() {
+    local pg
+    pg=$(cat "$DASH_RUN/daemon.pgid" 2>/dev/null)
+    if [ -n "$pg" ]; then
+        # The daemon leads its own process group: this stops it, its event
+        # listener and any fetch in progress.
+        kill -TERM -"$pg" 2>/dev/null
+        sleep 1
+        kill -KILL -"$pg" 2>/dev/null
+    fi
+    rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid"
+    rmdir "$DASH_RUN/lock" 2>/dev/null
+}
+
+case "$1" in
+    start)
+        check_config || exit 1
+        stop_daemon
+        prepare_run
+        if command -v setsid > /dev/null 2>&1; then
+            setsid sh "$DASH_RUN/daemon.sh" < /dev/null > /dev/null 2>&1 &
+        else
+            sh "$DASH_RUN/daemon.sh" < /dev/null > /dev/null 2>&1 &
+        fi
+        sleep 1
+        if daemon_running; then
+            echo "Dashboard started."
+            echo "Put the Kindle to sleep to see it."
+            log "started from scriptlet"
+        else
+            echo "Dashboard did not start. See dashboard/log.txt."
+        fi
+        flush_log
+        sleep 3
+        ;;
+    stop)
+        stop_daemon
+        mkdir -p "$DASH_RUN"
+        log "stopped from scriptlet"
+        flush_log
+        echo "Dashboard stopped."
+        sleep 2
+        ;;
+    update)
+        check_config || exit 1
+        daemon_running || prepare_run
+        echo "Fetching the dashboard..."
+        if sh "$DASH_RUN/update.sh" manual; then
+            echo "Done."
+        else
+            echo "Fetch failed: $(cat "$DASH_RUN/last_result" 2>/dev/null)"
+            echo "Showing the last image, if any. See dashboard/log.txt."
+        fi
+        if daemon_running; then echo "Background refresh: running"; else echo "Background refresh: stopped (tap Dashboard: Start)"; fi
+        sleep 2
+        draw_image
+        sleep 6
+        ;;
+    *)
+        echo "usage: ctl.sh start|stop|update"
+        exit 2
+        ;;
+esac
