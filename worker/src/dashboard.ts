@@ -5,7 +5,15 @@ import { cached, type WaitUntil } from "./cache";
 import type { Config, KVLike, MockScenario } from "./config";
 import { fetchTopStory } from "./headline";
 import { londonTime, parseHhmm, formatMinutes, type LondonTime } from "./time";
-import { buildDepartures, fetchLiveBoard, serviceMessage, type Departure, type LdbBoard } from "./trains/ldb";
+import {
+  BOARD_WINDOW,
+  buildDepartures,
+  fetchLiveBoard,
+  LATER_OFFSET,
+  mergeBoards,
+  serviceMessage,
+  type Departure,
+} from "./trains/ldb";
 import { mockBoard } from "./trains/mock";
 import { buildWeather, fetchForecast, type WeatherView } from "./weather";
 
@@ -14,6 +22,8 @@ export type Section<T> = { ok: true; data: T; asOf?: string } | { ok: false; err
 export interface TrainsData {
   departures: Departure[];
   message: string | null;
+  /** Minutes ahead the boards covered, for "NO TRAINS IN THE NEXT 4 HOURS". */
+  horizon: number;
 }
 
 export interface DashboardModel {
@@ -72,17 +82,28 @@ export async function gatherDashboard(cfg: Config, deps: Deps, at: Date, params:
   const scenario = params.scenario ?? cfg.mockScenario;
 
   const trainsTask = (async (): Promise<TrainsData> => {
-    const board: LdbBoard = live
-      ? await fetchLiveBoard(cfg.ldbUrl, cfg.stationCrs, cfg.filterCrs, deps.rdmKey!, deps.fetch)
-      : mockBoard(scenario, now.minutes);
-    return {
-      departures: buildDepartures(board, {
-        filterCrs: cfg.filterCrs,
-        leaveByMinutes: cfg.leaveByMinutes,
-        now: now.minutes,
-      }),
-      message: serviceMessage(board),
-    };
+    const opts = { filterCrs: cfg.filterCrs, leaveByMinutes: cfg.leaveByMinutes, now: now.minutes };
+    if (!live) {
+      const board = mockBoard(scenario, now.minutes);
+      return { departures: buildDepartures(board, opts), message: serviceMessage(board), horizon: BOARD_WINDOW };
+    }
+    const fetchBoard = (offset: number) =>
+      fetchLiveBoard(cfg.ldbUrl, cfg.stationCrs, cfg.filterCrs, deps.rdmKey!, deps.fetch, offset);
+    let board = await fetchBoard(0);
+    let departures = buildDepartures(board, opts);
+    let horizon = BOARD_WINDOW;
+    // A board only reaches two hours ahead. If that leaves rows empty, fetch
+    // the next two hours too. If that fails, show what the first board had.
+    if (departures.length < 3) {
+      try {
+        board = mergeBoards(board, await fetchBoard(LATER_OFFSET));
+        departures = buildDepartures(board, opts);
+        horizon = LATER_OFFSET + BOARD_WINDOW;
+      } catch (err) {
+        console.warn("later board failed", err);
+      }
+    }
+    return { departures, message: serviceMessage(board), horizon };
   })();
 
   const weatherTask = (async () => {

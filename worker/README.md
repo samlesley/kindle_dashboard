@@ -178,7 +178,12 @@ Secrets: `ACCESS_TOKEN` (required), `RDM_KEY` (for live trains).
 `filterCrs=PTK&filterType=to`, so only services calling at Partick come back.
 It also drops any service whose calling points show it doesn't call there;
 the mock relies on that check. It shows the first three trains that haven't
-left yet. A train stays until the minute after its scheduled time, or after its
+left yet. One request only reaches two hours ahead, so when that gives fewer
+than three trains the Worker asks again for the two hours after that
+(`timeOffset=119`), and shows the next train even when it's up to 4 hours away.
+Beyond that the rows say `NO TRAINS IN THE NEXT 4 HOURS` (the API can't look
+further), so late at night the first morning train appears from the 02:00 or
+04:00 refresh. A train stays until the minute after its scheduled time, or after its
 expected time if it's running late. Cancelled trains, and "Delayed" ones with
 no estimate, go after their scheduled time. Each row shows:
 

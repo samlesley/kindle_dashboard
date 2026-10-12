@@ -63,21 +63,41 @@ export interface BoardOptions {
   max?: number;
 }
 
+/** How far ahead one board looks, in minutes (the API's maximum). */
+export const BOARD_WINDOW = 120;
+/** Start of a second board that carries on where the first ends (the API's maximum offset). */
+export const LATER_OFFSET = 119;
+
 export async function fetchLiveBoard(
   baseUrl: string,
   stationCrs: string,
   filterCrs: string,
   apiKey: string,
   fetchFn: typeof fetch = fetch,
+  timeOffset = 0,
 ): Promise<LdbBoard> {
   const url = new URL(`${baseUrl}/${encodeURIComponent(stationCrs)}`);
   url.searchParams.set("numRows", "10");
   url.searchParams.set("filterCrs", filterCrs);
   url.searchParams.set("filterType", "to");
-  url.searchParams.set("timeWindow", "120");
+  if (timeOffset) url.searchParams.set("timeOffset", String(timeOffset));
+  url.searchParams.set("timeWindow", String(BOARD_WINDOW));
   return upstreamJson<LdbBoard>("RAIL DATA", fetchFn, url.toString(), {
     headers: { "x-apikey": apiKey, accept: "application/json", "user-agent": "kindle-dashboard/1.0" },
   });
+}
+
+/** The first board with the later board's trains added (each train once). */
+export function mergeBoards(first: LdbBoard, later: LdbBoard): LdbBoard {
+  const key = (s: LdbService) => s.serviceID ?? `${s.std}|${s.destination?.map((d) => d.crs ?? d.locationName).join("&")}`;
+  const services = [...(first.trainServices ?? [])];
+  const seen = new Set(services.map(key));
+  for (const s of later.trainServices ?? []) {
+    if (seen.has(key(s))) continue;
+    seen.add(key(s));
+    services.push(s);
+  }
+  return { ...first, trainServices: services };
 }
 
 function callsAt(service: LdbService, crs: string): boolean | null {

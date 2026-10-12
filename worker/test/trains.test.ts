@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDepartures, serviceMessage, type LdbBoard, type LdbService } from "../src/trains/ldb";
+import { buildDepartures, mergeBoards, serviceMessage, type LdbBoard, type LdbService } from "../src/trains/ldb";
 import { mockBoard } from "../src/trains/mock";
 
 const svc = (std: string, etd: string, dest: string, calls: string[] | null, extra: Partial<LdbService> = {}): LdbService => ({
@@ -73,6 +73,27 @@ describe("departures", () => {
     const late: LdbBoard = { trainServices: [svc("23:58", "00:03", "Milngavie", ["PTK"])] };
     expect(buildDepartures(late, opts("00:01"))).toHaveLength(1);
     expect(buildDepartures(late, opts("00:04"))).toHaveLength(0);
+  });
+
+  it("merges a later board without repeating trains in both", () => {
+    const first: LdbBoard = { filtercrs: "PTK", nrccMessages: ["Note"], trainServices: [svc("08:40", "On time", "Milngavie", null, { serviceID: "A" })] };
+    const later: LdbBoard = {
+      nrccMessages: ["Note"],
+      trainServices: [
+        svc("08:40", "On time", "Milngavie", null, { serviceID: "A" }),
+        svc("09:10", "On time", "Milngavie", null), // no serviceID: matched by time and destination
+        svc("09:10", "On time", "Milngavie", null),
+        svc("09:10", "On time", "Springburn", null),
+      ],
+    };
+    const merged = mergeBoards(first, later);
+    expect(merged.trainServices!.map((s) => `${s.std} ${s.destination![0].locationName}`)).toEqual([
+      "08:40 Milngavie",
+      "09:10 Milngavie",
+      "09:10 Springburn",
+    ]);
+    expect(serviceMessage(merged)).toBe("Note");
+    expect(mergeBoards({ trainServices: null }, { trainServices: null }).trainServices).toEqual([]);
   });
 
   it("turns service messages into plain text", () => {

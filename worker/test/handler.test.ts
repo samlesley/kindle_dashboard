@@ -94,6 +94,55 @@ describe("data", () => {
     expect(model.trains.data.departures[0].destination).toBe("DALMUIR");
   });
 
+  describe("looking past two hours", () => {
+    const live = { ...env, LIVE_TRAINS: "true", RDM_KEY: "rdm-test" };
+    const dep = (std: string, id: string) => ({ std, etd: "On time", serviceID: id, destination: [{ locationName: "Milngavie" }] });
+    /** Answers the first board with `first` and the later one (timeOffset set) with `later`. */
+    const boards = (first: object[], later: object[] | "fail") => {
+      const urls: string[] = [];
+      const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.includes("raildata")) return fixtureFetch()(input, init);
+        urls.push(url);
+        if (!url.includes("timeOffset")) return Response.json({ filtercrs: "PTK", trainServices: first });
+        if (later === "fail") return new Response("Service Unavailable", { status: 503 });
+        return Response.json({ filtercrs: "PTK", trainServices: later });
+      }) as typeof fetch;
+      return { f, urls };
+    };
+    const json = async (f: typeof fetch) => (await get("?k=secret-token&format=json", live, f)).json();
+
+    it("fills empty rows from the next two hours", async () => {
+      // 06:44 now: one train in the first board, more from 08:43 onwards (08:46 is in both).
+      const { f, urls } = boards([dep("08:46", "A")], [dep("08:46", "A"), dep("09:16", "B"), dep("09:46", "C")]);
+      const model = await json(f);
+      expect(urls[1]).toContain("timeOffset=119");
+      expect(urls[1]).toContain("timeWindow=120");
+      expect(model.trains.data.departures.map((d: { scheduled: string }) => d.scheduled)).toEqual(["08:46", "09:16", "09:46"]);
+      expect(model.trains.data.horizon).toBe(239);
+    });
+
+    it("shows the next train when none are due for two hours", async () => {
+      const { f } = boards([], [dep("10:30", "D")]);
+      const model = await json(f);
+      expect(model.trains.data.departures.map((d: { scheduled: string }) => d.scheduled)).toEqual(["10:30"]);
+    });
+
+    it("doesn't ask when the first board has three trains", async () => {
+      const { f, urls } = boards([dep("06:56", "A"), dep("07:26", "B"), dep("07:56", "C")], []);
+      await json(f);
+      expect(urls).toHaveLength(1);
+    });
+
+    it("keeps the first board if the later one fails", async () => {
+      const { f } = boards([dep("06:56", "A")], "fail");
+      const model = await json(f);
+      expect(model.trains.ok).toBe(true);
+      expect(model.trains.data.departures).toHaveLength(1);
+      expect(model.trains.data.horizon).toBe(120);
+    });
+  });
+
   it("hides the headline when switched off", async () => {
     const model = await (await get("?k=secret-token&format=json", { ...env, SHOW_HEADLINE: "false" }, fixtureFetch())).json();
     expect(model.headline).toBeNull();

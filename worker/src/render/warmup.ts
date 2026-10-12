@@ -30,6 +30,7 @@ function sampleModel(): DashboardModel {
           { scheduled: "07:56", status: "on-time", statusText: "ON TIME", leaveBy: "07:51", destination: "MILNGAVIE" },
         ],
         message: "TRAINS BETWEEN GLASGOW QUEEN STREET AND PARTICK MAY BE DELAYED BY UP TO 15 MINUTES.",
+        horizon: 120,
       },
     },
     weather: {

@@ -187,7 +187,8 @@ function drawDepartures(p: Painter, data: TrainsData): void {
     const dep = data.departures[i];
     if (dep) drawRow(p, dep, top, rowH, i === 0);
     else if (i === data.departures.length) {
-      const text = i === 0 ? "NO TRAINS IN THE NEXT 2 HOURS" : "NO MORE TRAINS IN THE NEXT 2 HOURS";
+      const hours = Math.round(data.horizon / 60);
+      const text = `NO ${i === 0 ? "" : "MORE "}TRAINS IN THE NEXT ${hours} HOURS`;
       p.text(text, L + INSET, top + Math.round(rowH * 0.58), 37.5);
     }
     if (i < 2 || msgH) p.c.hLine(L, R, Math.round(ROWS_TOP + (i + 1) * rowH) - 1, 2, BLACK);
