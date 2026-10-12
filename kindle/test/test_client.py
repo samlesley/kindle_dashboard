@@ -179,6 +179,8 @@ exec cat "$FAKE/events.fifo"
 """
 
 FAKE_CURL = """#!/bin/sh
+[ "$1" = -V ] && echo "curl 8.22.0 (fake)" && exit 0
+echo "$WHICH_CURL" >> "$FAKE/which.log"
 out=""; url=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -241,12 +243,14 @@ class Simulation(unittest.TestCase):
             ("lipc-get-prop", FAKE_GET),
             ("lipc-set-prop", FAKE_SET),
             ("lipc-wait-event", FAKE_WAIT),
-            ("curl", FAKE_CURL),
+            ("curl", FAKE_CURL.replace("$WHICH_CURL", "system")),
             ("fbink", FAKE_FBINK),
         ):
             p = self.fakebin / name
             p.write_text(body)
             p.chmod(0o755)
+        # Stand-in for the bundled ARM curl.
+        (self.home / "bin" / "curl").write_text(FAKE_CURL.replace("$WHICH_CURL", "bundled"))
         os.mkfifo(self.fake / "events.fifo")
         self.fifo = os.open(self.fake / "events.fifo", os.O_RDWR)
 
@@ -344,6 +348,7 @@ class Simulation(unittest.TestCase):
         self.assertRegex(url, rf"^https://example.test/\?k={TOKEN}&batt=80&next=\d\d:\d\d$")
         self.assertTrue((self.home / "cache" / "dashboard.png").exists())
         self.assertIn("OK at", (self.run_dir / "last_result").read_text())
+        self.assertEqual(set((self.fake / "which.log").read_text().split()), {"bundled"})
 
         # Go to sleep with Wi-Fi on: not due, so draw the cached image and turn Wi-Fi off.
         self.clear_calls()
@@ -428,6 +433,15 @@ class Simulation(unittest.TestCase):
         log = self.log_text()
         self.assertIn("fetch failed (curl exit 22)", log)
         self.assertNotIn(TOKEN, log)
+
+    def test_falls_back_to_kindle_curl(self):
+        # A bundled binary that can't run (e.g. wrong CPU) means using the Kindle's curl.
+        (self.home / "bin" / "curl").write_text("not a binary\n")
+        out = self.ctl("start")
+        self.assertIn("Dashboard started.", out.stdout, out.stderr)
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="first fetch")
+        self.assertEqual(set((self.fake / "which.log").read_text().split()), {"system"})
+        self.assertIn("bundled curl could not run here", self.log_text())
 
     def test_start_without_config(self):
         (self.home / "config.sh").unlink()

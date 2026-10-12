@@ -27,6 +27,12 @@ Refreshes run every 10 minutes from 06:00 to 10:00, every 30 minutes from 10:00
 to 22:00, and every 2 hours from 22:00 to 06:00. Times are UK time; the script
 works out BST itself, because the Kindle's clock runs on UTC.
 
+Downloads use a bundled, modern `curl` (`dashboard/bin/curl`). The Kindle's
+own `curl` uses an encryption library too old for Cloudflare, which refuses
+the connection (`curl exit 35`). The bundled one is a self-contained static
+build of curl 8.22.0 with Mbed TLS 3.6.7, made from source with
+`tools/build-curl.sh` (see `third_party/`).
+
 If a fetch fails, the last image stays on screen. The footer's `NEXT` time is
 then in the past, which tells you a refresh was missed. The front light is
 never touched; it is already off while the Kindle sleeps.
@@ -107,7 +113,8 @@ anything you'd rather not share.
 | Normal sleep screen, never the dashboard | Check the log for `event goingToScreenSaver`. If it's missing, the background script isn't running: tap Dashboard: Start. If it's there, see the next rows. |
 | Dashboard flashes up, then the normal sleep screen covers it | The sleep screen finished drawing after us. Raise `DRAW_DELAY` to 4 or 5. |
 | `fetch failed (curl exit 60)` or `(77)` | Certificate problem. Make sure `dashboard/certs/cacert.pem` exists (run `./install.sh` again). |
-| `fetch failed (curl exit 35)` | The Kindle's built-in download tool can't negotiate a secure connection with Cloudflare. Tell me; the fix is to bundle a newer download tool. |
+| `fetch failed (curl exit 35)` | A secure connection couldn't be set up. Check the log near `started from scriptlet` for `using bundled curl 8.22.0`. If it's missing, run `./install.sh` again and tap Dashboard: Start. |
+| `bundled curl could not run here` | The bundled curl didn't run on this Kindle, so the client fell back to the Kindle's own, which Cloudflare refuses. Tell me what the log says. |
 | `fetch failed (curl exit 22)` with `403` | The token in `config.sh` doesn't match the Worker's `ACCESS_TOKEN`. |
 | `Wi-Fi did not connect within 30s` | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
 | Footer `NEXT` time is in the past | The last refresh failed; the log says why. |
@@ -129,7 +136,10 @@ dashboard/bin/ctl.sh               start / stop / update, called by the scriptle
 dashboard/bin/daemon.sh            background script: reacts to power events
 dashboard/bin/update.sh            one refresh: Wi-Fi, fetch, draw, wake timer
 dashboard/bin/lib.sh               shared helpers, UK time and schedule maths
+dashboard/bin/curl                 modern static curl for ARM (the Kindle's is too old)
 dashboard/certs/cacert.pem         trusted certificate list for curl
+tools/build-curl.sh                rebuilds dashboard/bin/curl from source
+third_party/                       licences and versions for the bundled curl
 test/test_client.py                tests (run on a computer)
 ```
 

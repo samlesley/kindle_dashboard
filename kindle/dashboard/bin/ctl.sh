@@ -39,6 +39,15 @@ prepare_run() {
     cp "$BIN/lib.sh" "$BIN/daemon.sh" "$BIN/update.sh" "$DASH_RUN/"
     tr -d '\r' < "$DASH_HOME/config.sh" > "$DASH_RUN/config.sh"
     cp "$DASH_HOME/certs/cacert.pem" "$DASH_RUN/cacert.pem"
+    # Bundled modern curl: the Kindle's own can't negotiate TLS with Cloudflare.
+    rm -f "$DASH_RUN/curl"
+    if [ -f "$BIN/curl" ] && cp "$BIN/curl" "$DASH_RUN/curl" && chmod 755 "$DASH_RUN/curl" &&
+        "$DASH_RUN/curl" -V > /dev/null 2>&1; then
+        log "using bundled $("$DASH_RUN/curl" -V | head -n 1 | cut -d' ' -f1-2)"
+    else
+        rm -f "$DASH_RUN/curl"
+        log "bundled curl could not run here; using the Kindle's own (may fail TLS)"
+    fi
     if [ ! -s "$DASH_RUN/dashboard.png" ] && [ -s "$DASH_HOME/cache/dashboard.png" ]; then
         cp "$DASH_HOME/cache/dashboard.png" "$DASH_RUN/dashboard.png"
     fi

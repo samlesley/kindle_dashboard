@@ -12,6 +12,8 @@
 load_config
 MODE=${1:-scheduled}
 CURL_PID=""
+# The bundled curl (copied in by ctl.sh) if it runs here, else the Kindle's.
+if [ -x "$DASH_RUN/curl" ]; then CURL="$DASH_RUN/curl"; else CURL=curl; fi
 
 # One update at a time.
 if ! mkdir "$DASH_RUN/lock" 2>/dev/null; then
@@ -50,7 +52,7 @@ fetch() {
     case "$DASHBOARD_URL" in *\?*) sep='&' ;; esac
     url="$DASHBOARD_URL${sep}k=$DASHBOARD_TOKEN&batt=$BATT&next=$NEXT_HHMM"
     rm -f "$DASH_RUN/fetch.png"
-    curl -sS --fail --connect-timeout 10 --max-time "$FETCH_TIMEOUT" --retry 1 \
+    "$CURL" -sS --fail --connect-timeout 10 --max-time "$FETCH_TIMEOUT" --retry 1 \
         --cacert "$CA_BUNDLE" -o "$DASH_RUN/fetch.png" "$url" 2> "$DASH_RUN/curl.err" &
     CURL_PID=$!
     wait "$CURL_PID"
