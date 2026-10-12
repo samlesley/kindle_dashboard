@@ -1,5 +1,7 @@
-// Draws the dashboard. Positions follow docs/mockup.png (which is drawn at
-// 2x; everything here is in device pixels for a 1072x1448 Paperwhite).
+// Draws the dashboard. The layout follows docs/mockup.png (which is drawn at
+// 2x; everything here is in device pixels for a 1072x1448 Paperwhite), with
+// the departures a little tighter and the weather, headline and footer text
+// larger so they read comfortably on the device.
 //
 // Font sizes are multiples of 2.5 px so VT323's 0.4 em advance lands on
 // whole pixels and columns of digits line up.
@@ -14,7 +16,7 @@ export const WIDTH = 1072;
 export const HEIGHT = 1448;
 
 /** Every text size used below, so glyphs can be prepared at startup. */
-export const FONT_SIZES = [25, 27.5, 30, 32.5, 35, 37.5, 47.5, 50, 52.5, 55, 67.5, 75, 100] as const;
+export const FONT_SIZES = [30, 32.5, 35, 37.5, 40, 42.5, 45, 47.5, 50, 52.5, 55, 57.5, 62.5, 67.5, 75, 100] as const;
 
 const L = 44; // left margin
 const R = 1028; // right margin
@@ -22,12 +24,26 @@ const CW = R - L;
 const INSET = 12; // column inset inside the departures table
 const STATUS_X = 521; // EXPECTED column
 
-const ROWS_TOP = 329;
-const ROWS_BOTTOM = 724;
-const STRIP_BOTTOM = 1199;
-const NOTICE_TOP = 1223;
-const FOOTER_BASE = 1436;
-const FOOTER_RULE = 1405;
+// Vertical positions, top to bottom.
+const TOP_LINE = 52; // baseline of "P140 TRAINS+WX"
+const BAND_TOP = 64; // reversed-out date/time band
+const BAND_H = 126;
+const TRAINS_HEADING = 239;
+const COLUMN_HEADS = 281;
+const ROWS_TOP = 294;
+const ROWS_BOTTOM = 648;
+const WEATHER_HEADING = 701;
+const SUMMARY = 756;
+const BOXES_TOP = 772;
+const BOXES_H = 140;
+const STRIP_TOP = 924;
+const STRIP_BOTTOM = 1174;
+const NOTICE_TOP = 1192;
+const FOOTER_RULE = 1398;
+const FOOTER_BASE = 1432;
+
+/** Nearest multiple of 2.5 px (keeps character advances on whole pixels). */
+const snap = (size: number) => Math.round(size / 2.5) * 2.5;
 
 class Painter {
   constructor(readonly c: Canvas, readonly font: Font) {}
@@ -96,23 +112,23 @@ export function drawDashboard(font: Font, m: DashboardModel): Canvas {
 }
 
 function drawHeader(p: Painter, m: DashboardModel): void {
-  p.text("P140 TRAINS+WX", L, 62, 30);
-  p.text(m.trainSource === "live" ? "NRE DARWIN / OPEN-METEO" : "MOCK TRAINS / OPEN-METEO", R, 62, 30, BLACK, "right");
+  p.text("P140 TRAINS+WX", L, TOP_LINE, 30);
+  p.text(m.trainSource === "live" ? "NRE DARWIN / OPEN-METEO" : "MOCK TRAINS / OPEN-METEO", R, TOP_LINE, 30, BLACK, "right");
 
-  p.c.fillRect(L, 75, CW, 142, BLACK);
-  p.text(m.now.weekday, L + 24, 114, 37.5, WHITE);
-  p.text(m.now.dayMonth, L + 24, 196, 100, WHITE);
-  p.text("UPDATED", R - 24, 114, 37.5, WHITE, "right");
-  p.text(m.now.hhmm, R - 24, 196, 100, WHITE, "right");
+  p.c.fillRect(L, BAND_TOP, CW, BAND_H, BLACK);
+  p.text(m.now.weekday, L + 24, BAND_TOP + 37, 37.5, WHITE);
+  p.text(m.now.dayMonth, L + 24, BAND_TOP + BAND_H - 16, 100, WHITE);
+  p.text("UPDATED", R - 24, BAND_TOP + 37, 37.5, WHITE, "right");
+  p.text(m.now.hhmm, R - 24, BAND_TOP + BAND_H - 16, 100, WHITE, "right");
 }
 
 function drawTrains(p: Painter, m: DashboardModel): void {
-  p.heading(`[ ${m.stationName} > ${m.headingTo} ]`, `WALK ${m.walkMinutes} MIN`, 270);
+  p.heading(`[ ${m.stationName} > ${m.headingTo} ]`, `WALK ${m.walkMinutes} MIN`, TRAINS_HEADING);
 
-  p.text("DUE", L + INSET, 315, 30);
-  p.text("EXPECTED", STATUS_X, 315, 30);
-  p.text("LEAVE BY", R - INSET, 315, 30, BLACK, "right");
-  p.c.hLine(L, R, 326, 3, BLACK);
+  p.text("DUE", L + INSET, COLUMN_HEADS, 30);
+  p.text("EXPECTED", STATUS_X, COLUMN_HEADS, 30);
+  p.text("LEAVE BY", R - INSET, COLUMN_HEADS, 30, BLACK, "right");
+  p.c.hLine(L, R, ROWS_TOP - 3, 3, BLACK);
   p.c.hLine(L, R, ROWS_BOTTOM, 3, BLACK);
 
   if (!m.trains.ok) {
@@ -154,9 +170,12 @@ function drawDepartures(p: Painter, data: TrainsData): void {
 }
 
 function drawRow(p: Painter, d: Departure, top: number, rowH: number, first: boolean): void {
-  const timeSize = first ? 75 : 67.5;
-  const statusSize = first ? 50 : 47.5;
-  const leaveSize = first ? 55 : 50;
+  // Rows squeezed by a service message get slightly smaller text.
+  const k = rowH < 110 ? 0.85 : 1;
+  const timeSize = snap((first ? 75 : 67.5) * k);
+  const statusSize = snap((first ? 50 : 47.5) * k);
+  const leaveSize = snap((first ? 55 : 50) * k);
+  const destSize = snap(37.5 * k);
   const base = top + Math.round(rowH * 0.52);
   const destBase = top + Math.round(rowH * 0.85);
 
@@ -176,29 +195,29 @@ function drawRow(p: Painter, d: Departure, top: number, rowH: number, first: boo
     if (d.status === "late" || d.status === "delayed") p.c.strokeRect(STATUS_X - 10, base - cap - 9, w + 20, cap + 18, 3, BLACK);
   }
 
-  p.text(d.destination, L + INSET, destBase, 37.5, BLACK, "left", CW - 2 * INSET);
+  p.text(d.destination, L + INSET, destBase, destSize, BLACK, "left", CW - 2 * INSET);
 }
 
 /** Returns the y just below the last thing drawn (for footer spacing). */
 function drawWeather(p: Painter, m: DashboardModel): number {
   const asOf = m.weather.ok && m.weather.asOf ? `AS OF ${m.weather.asOf}` : null;
-  p.heading("[ WEATHER ]", asOf, 778, 30);
+  p.heading("[ WEATHER ]", asOf, WEATHER_HEADING, 30);
 
   if (!m.weather.ok) {
-    p.text("WEATHER UNAVAILABLE", L, 835, 52.5);
-    p.unavailable(853, STRIP_BOTTOM, "FORECAST UNAVAILABLE", m.weather.error);
+    p.text("WEATHER UNAVAILABLE", L, SUMMARY, 52.5);
+    p.unavailable(BOXES_TOP, STRIP_BOTTOM, "FORECAST UNAVAILABLE", m.weather.error);
     return STRIP_BOTTOM;
   }
   const w = m.weather.data;
-  p.text(w.summary, L, 835, 52.5, BLACK, "left", CW);
+  p.text(w.summary, L, SUMMARY, 52.5, BLACK, "left", CW);
   drawBoxes(p, w);
   drawStrip(p, w);
   return drawNotices(p, w.notices);
 }
 
 function drawBoxes(p: Painter, w: WeatherView): void {
-  const top = 853;
-  const h = 118;
+  const top = BOXES_TOP;
+  const h = BOXES_H;
   const bw = CW / 4;
   p.c.strokeRect(L, top, CW, h, 2, BLACK);
   for (let k = 1; k < 4; k++) p.c.vLine(Math.round(L + k * bw) - 1, top, top + h, 2, BLACK);
@@ -212,14 +231,14 @@ function drawBoxes(p: Painter, w: WeatherView): void {
   boxes.forEach(([label, value, sub], k) => {
     const x = Math.round(L + k * bw) + 16;
     const max = Math.round(bw) - 28;
-    p.text(label, x, top + 31, 27.5, BLACK, "left", max);
-    p.text(value, x, top + 75, 52.5, BLACK, "left", max);
-    p.text(sub, x, top + 103, 25, BLACK, "left", max);
+    p.text(label, x, top + 36, 32.5, BLACK, "left", max);
+    p.text(value, x, top + 88, 62.5, BLACK, "left", max);
+    p.text(sub, x, top + 124, 32.5, BLACK, "left", max);
   });
 }
 
 function drawStrip(p: Painter, w: WeatherView): void {
-  const top = 982;
+  const top = STRIP_TOP;
   const colW = CW / 6;
   p.c.hLine(L, R, STRIP_BOTTOM - 2, 2, BLACK);
   w.hours.forEach((slot, k) => {
@@ -229,54 +248,56 @@ function drawStrip(p: Painter, w: WeatherView): void {
     if (k === 0) p.c.fillRect(x0, top, x1 - x0, STRIP_BOTTOM - top, BLACK);
     if (k > 1) p.c.vLine(x0, top, STRIP_BOTTOM, 1, BLACK);
     const cx = Math.round((x0 + x1) / 2);
-    p.text(slot.label, cx, 1014, 27.5, color, "center");
-    p.text(`${slot.temp}°`, cx, 1063, 47.5, color, "center");
+    p.text(slot.label, cx, top + 40, 35, color, "center");
+    p.text(`${slot.temp}°`, cx, top + 94, 57.5, color, "center");
 
     // Rain-chance gauge: five segments, filled from the bottom, 20% each.
     const filled = Math.min(5, Math.max(0, Math.round(slot.chance / 20)));
     for (let s = 0; s < 5; s++) {
-      const y = 1081 + s * 15;
-      if (4 - s < filled) p.c.fillRect(cx - 20, y, 40, 11, color);
-      else p.c.strokeRect(cx - 20, y, 40, 11, 2, color);
+      const y = top + 110 + s * 17;
+      if (4 - s < filled) p.c.fillRect(cx - 22, y, 44, 13, color);
+      else p.c.strokeRect(cx - 22, y, 44, 13, 2, color);
     }
-    p.text(`${slot.chance}%`, cx, 1181, 27.5, color, "center");
+    p.text(`${slot.chance}%`, cx, top + 233, 35, color, "center");
   });
 }
 
 function drawNotices(p: Painter, notices: string[]): number {
   if (notices.length === 0) return STRIP_BOTTOM;
-  const size = 37.5;
+  const size = 40;
+  const lineH = 34;
   const maxW = CW - 46;
   // At most two lines: one per notice, or one notice wrapped over two.
   const lines =
     notices.length === 1
       ? p.wrap(`> ${notices[0]}`, size, maxW, 2)
       : notices.slice(0, 2).map((n) => `> ${n}`);
-  const h = 58 + (lines.length - 1) * 30;
+  const h = 62 + (lines.length - 1) * lineH;
   p.c.dashedRect(L, NOTICE_TOP, CW, h, 2, 6, 4, BLACK);
-  lines.forEach((line, i) => p.text(line, L + 23, NOTICE_TOP + 40 + i * 30, size, BLACK, "left", maxW));
+  lines.forEach((line, i) => p.text(line, L + 23, NOTICE_TOP + 42 + i * lineH, size, BLACK, "left", maxW));
   return NOTICE_TOP + h;
 }
 
 function drawFooter(p: Painter, m: DashboardModel, contentBottom: number): void {
   const sun = m.weather.ok ? m.weather.data : null;
-  p.text(`SUNRISE ${sun?.sunrise ?? "--:--"} SUNSET ${sun?.sunset ?? "--:--"}`, L, FOOTER_BASE, 27.5);
-  p.text(`NEXT ${m.nextRefresh ?? "--:--"} BATT ${m.battery ?? "--"}%`, R, FOOTER_BASE, 27.5, BLACK, "right");
+  p.text(`SUNRISE ${sun?.sunrise ?? "--:--"} SUNSET ${sun?.sunset ?? "--:--"}`, L, FOOTER_BASE, 32.5);
+  p.text(`NEXT ${m.nextRefresh ?? "--:--"} BATT ${m.battery ?? "--"}%`, R, FOOTER_BASE, 32.5, BLACK, "right");
   p.c.hLine(L, R, FOOTER_RULE, 2, BLACK);
 
   if (!m.headline) return;
-  const size = 35;
-  const badgeSize = 32.5;
+  const size = 40;
+  const lineH = 40;
+  const badgeSize = 37.5;
   const badgeW = p.width("BBC", badgeSize) + 16;
   const textX = L + badgeW + 16;
-  const lastBase = FOOTER_RULE - 32;
-  const ruleFor = (lines: number) => lastBase - (lines - 1) * 36 - 42;
+  const lastBase = FOOTER_RULE - 30;
+  const ruleFor = (lines: number) => lastBase - (lines - 1) * lineH - 46;
 
   const story = m.headline.ok ? m.headline.data : `[HEADLINE UNAVAILABLE: ${m.headline.error}]`;
   const maxLines = ruleFor(2) >= contentBottom + 14 ? 2 : 1;
   const lines = p.wrap(story, size, R - textX, maxLines);
-  const firstBase = lastBase - (lines.length - 1) * 36;
+  const firstBase = lastBase - (lines.length - 1) * lineH;
   p.c.hLine(L, R, ruleFor(lines.length), 2, BLACK);
   p.badge("BBC", L, firstBase, badgeSize);
-  lines.forEach((line, i) => p.text(line, textX, firstBase + i * 36, size));
+  lines.forEach((line, i) => p.text(line, textX, firstBase + i * lineH, size));
 }

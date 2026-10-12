@@ -10,9 +10,9 @@ import { renderDashboardPng } from ".";
 import type { Font } from "./text";
 
 const CHARS = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`{|}~°";
-// Sizes above this only show times and the date, so need fewer characters.
+// Sizes above this only show times, the date and weather figures.
 const LARGE = 55;
-const LARGE_CHARS = " 0123456789:-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const LARGE_CHARS = " 0123456789:-.\u00b0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 function sampleModel(): DashboardModel {
   return {
