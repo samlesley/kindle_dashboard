@@ -31,7 +31,7 @@ WALK_MINUTES = "4"
 
 # "false" = mock trains (sample data). "true" = live Rail Data Marketplace data,
 # used only when the RDM_KEY secret is also set.
-LIVE_TRAINS = "false"
+LIVE_TRAINS = "true"
 # Mock scenario when not live: normal | delayed | cancelled
 MOCK_SCENARIO = "normal"
 # Endpoint shown on your Rail Data Marketplace product's Specification tab

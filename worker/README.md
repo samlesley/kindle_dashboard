@@ -142,7 +142,8 @@ When Rail Data Marketplace approves your account:
    endpoint URL matches `LDB_URL` in `wrangler.toml` (everything before
    `/{crs}`). If the URL differs, update `LDB_URL`.
 8. Store the key: `npx wrangler secret put RDM_KEY`, then paste the key when prompted.
-9. Set `LIVE_TRAINS = "true"` in `wrangler.toml` and run `npx wrangler deploy`.
+9. Run `npx wrangler deploy`. (`LIVE_TRAINS` is already `"true"` in `wrangler.toml`;
+   until `RDM_KEY` is set, the Worker uses mock trains.)
 10. Check `…/?k=<token>&format=json`: `trainSource` should be `"live"` and
     `trains.ok` should be `true`. Top right of the image now says `NRE DARWIN`.
 
@@ -159,7 +160,7 @@ ignores). Neither is ever written to `wrangler.toml`.
 | `FILTER_CRS` | `PTK` | Only services calling at Partick. |
 | `HEADING_TO` | `QUEEN ST / PARTICK` | Shown after the station name. |
 | `WALK_MINUTES` | `4` | Hides trains expected sooner than this; leave-by = expected − this. |
-| `LIVE_TRAINS` | `false` | `true` uses live data, but only when `RDM_KEY` is set. Otherwise mock data is used. |
+| `LIVE_TRAINS` | `true` | `true` uses live data, but only when `RDM_KEY` is set. Otherwise, or when `false`, mock data is used. |
 | `MOCK_SCENARIO` | `normal` | `normal`, `delayed` or `cancelled`. |
 | `LDB_URL` | `https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard` | Live Departure Board endpoint, without `/{crs}`. |
 | `RAIN_CHANCE_PCT` | `50` | Wet notice threshold… |
