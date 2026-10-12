@@ -10,9 +10,10 @@
 
 It was built from the upstream release tags with
 [`tools/build-curl.sh`](../tools/build-curl.sh), targeting
-`arm-linux-musleabi`, Cortex-A9 (Kindle Paperwhite 2 and later).
+`arm-linux-musleabi`, Cortex-A9 (Kindle Paperwhite 2 and later), with Mbed TLS
+set to read `/dev/urandom` (the default `/dev/random` blocks on the Kindle).
 
-SHA-256: `ee4888d1aa39a594ea50bfeb65897a68ca8a10dffb7bb7c28027799197b1038a`
+SHA-256: `dc93a1f6e87bbedd85b131762eeaa6346a86799a8954ffbb9d3d54c5ab20fdaf`
 
 `dashboard/certs/cacert.pem` is Mozilla's CA list from certifi, under the
 Mozilla Public License 2.0 (see `dashboard/certs/README.md`).

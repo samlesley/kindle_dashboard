@@ -55,8 +55,12 @@ fetch() {
     "$CURL" -sS --fail --connect-timeout 10 --max-time "$FETCH_TIMEOUT" --retry 1 \
         --cacert "$CA_BUNDLE" -o "$DASH_RUN/fetch.png" "$url" 2> "$DASH_RUN/curl.err" &
     CURL_PID=$!
+    # Watchdog in case curl gets stuck where its own --max-time can't act.
+    (sleep $((FETCH_TIMEOUT + 10)) && kill -KILL "$CURL_PID") 2> /dev/null &
+    WATCHDOG=$!
     wait "$CURL_PID"
     rc=$?
+    kill "$WATCHDOG" 2> /dev/null
     CURL_PID=""
     if [ "$rc" -ne 0 ]; then
         log "fetch failed (curl exit $rc): $(head -c 300 "$DASH_RUN/curl.err" | tr '\n' ' ' | redact)"

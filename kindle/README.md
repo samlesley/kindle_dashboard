@@ -31,7 +31,8 @@ Downloads use a bundled, modern `curl` (`dashboard/bin/curl`). The Kindle's
 own `curl` uses an encryption library too old for Cloudflare, which refuses
 the connection (`curl exit 35`). The bundled one is a self-contained static
 build of curl 8.22.0 with Mbed TLS 3.6.7, made from source with
-`tools/build-curl.sh` (see `third_party/`).
+`tools/build-curl.sh` (see `third_party/`). It reads randomness from
+`/dev/urandom`, because `/dev/random` blocks on the Kindle's kernel.
 
 If a fetch fails, the last image stays on screen. The footer's `NEXT` time is
 then in the past, which tells you a refresh was missed. The front light is
@@ -114,6 +115,7 @@ anything you'd rather not share.
 | Dashboard flashes up, then the normal sleep screen covers it | The sleep screen finished drawing after us. Raise `DRAW_DELAY` to 4 or 5. |
 | `fetch failed (curl exit 60)` or `(77)` | Certificate problem. Make sure `dashboard/certs/cacert.pem` exists (run `./install.sh` again). |
 | `fetch failed (curl exit 35)` | A secure connection couldn't be set up. Check the log near `started from scriptlet` for `using bundled curl 8.22.0`. If it's missing, run `./install.sh` again and tap Dashboard: Start. |
+| Start leaves a blank screen and no `start requested` line appears in the log | Start didn't run. Tap the top of the screen, then Home, and tap Dashboard: Start again. |
 | `bundled curl could not run here` | The bundled curl didn't run on this Kindle, so the client fell back to the Kindle's own, which Cloudflare refuses. Tell me what the log says. |
 | `fetch failed (curl exit 22)` with `403` | The token in `config.sh` doesn't match the Worker's `ACCESS_TOKEN`. |
 | `Wi-Fi did not connect within 30s` | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
@@ -159,6 +161,11 @@ python3 kindle/test/test_client.py
   Kindle's power and Wi-Fi controls, `curl` and FBInk. It goes through
   starting, sleeping, a timer wake with a slow fetch, a failed fetch, waking to
   read, Update Now and Stop.
+
+- **Failure handling:** a bundled curl that hangs at startup, a download stuck
+  past its time limit, and a leftover stuck copy from an earlier Start.
+- **Bundled curl:** if `qemu-arm-static` is installed, runs the real ARM
+  binary and checks it never reads the blocking `/dev/random`.
 
 Tests run under BusyBox ash (the Kindle's shell) if `busybox` is installed,
 and under `/bin/sh` in any case.

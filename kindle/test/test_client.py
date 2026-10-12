@@ -443,11 +443,72 @@ class Simulation(unittest.TestCase):
         self.assertEqual(set((self.fake / "which.log").read_text().split()), {"system"})
         self.assertIn("bundled curl could not run here", self.log_text())
 
+    def test_start_survives_hanging_curl(self):
+        # A bundled curl that hangs at startup (as /dev/random did on the device)
+        # must not hang Start: it is given 5 s, then the Kindle's curl is used.
+        (self.home / "bin" / "curl").write_text("#!/bin/sh\nsleep 60\n")
+        began = time.time()
+        out = self.ctl("start")
+        self.assertIn("Dashboard started.", out.stdout, out.stderr)
+        self.assertLess(time.time() - began, 20)
+        self.assertIn("bundled curl could not run here", self.log_text())
+
+    def test_watchdog_stops_stuck_fetch(self):
+        # curl stuck past its own time limit: the watchdog kills it (limit + 10 s).
+        (self.home / "config.sh").write_text(
+            f'DASHBOARD_URL="https://example.test/"\nDASHBOARD_TOKEN="{TOKEN}"\nFETCH_TIMEOUT=1\nWIFI_TIMEOUT=5\n'
+        )
+        (self.fake / "curl_delay").write_text("60")
+        self.ctl("start")
+        self.wait_for(lambda: "fetch failed" in self.log_text(), timeout=30, what="watchdog")
+        self.wait_for(self.update_idle, timeout=10, what="update to finish")
+        self.assertIn("FAILED", (self.run_dir / "last_result").read_text())
+
+    def test_start_clears_stuck_copies(self):
+        # A copy of ctl.sh stuck from an earlier Start is stopped by the next Start.
+        stray = self.tmp / "old" / "dashboard" / "bin" / "ctl.sh"
+        stray.parent.mkdir(parents=True)
+        stray.write_text("sleep 300\n")
+        proc = subprocess.Popen(["/bin/sh", str(stray)])
+        try:
+            time.sleep(0.3)
+            self.ctl("start")
+            proc.wait(timeout=10)
+            self.assertIsNotNone(proc.returncode)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+
     def test_start_without_config(self):
         (self.home / "config.sh").unlink()
         out = self.ctl("start")
         self.assertIn("No settings file found.", out.stdout)
         self.assertNotEqual(out.returncode, 0)
+
+
+class BundledCurl(unittest.TestCase):
+    """The real ARM curl, under qemu-arm if it is installed."""
+
+    def setUp(self):
+        self.qemu = os.environ.get("QEMU_ARM") or shutil.which("qemu-arm-static") or shutil.which("qemu-arm")
+        if not self.qemu:
+            self.skipTest("qemu-arm not available")
+        self.curl = BIN / "curl"
+
+    def test_runs_and_reports_version(self):
+        out = subprocess.run([self.qemu, "-cpu", "cortex-a9", str(self.curl), "-V"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertRegex(out.stdout, r"^curl 8\.\d+\.\d+ .*mbedTLS/3\.")
+        self.assertIn("https", out.stdout)
+
+    def test_never_reads_blocking_dev_random(self):
+        # /dev/random blocks on the Kindle's kernel; only /dev/urandom is safe.
+        out = subprocess.run(
+            [self.qemu, "-cpu", "cortex-a9", "-strace", str(self.curl), "-V"], capture_output=True, text=True, timeout=60
+        )
+        trace = out.stdout + out.stderr
+        self.assertIn('open("/dev/urandom"', trace)
+        self.assertNotIn('open("/dev/random"', trace)
 
 
 if __name__ == "__main__":

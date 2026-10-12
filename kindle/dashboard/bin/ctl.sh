@@ -40,10 +40,11 @@ prepare_run() {
     tr -d '\r' < "$DASH_HOME/config.sh" > "$DASH_RUN/config.sh"
     cp "$DASH_HOME/certs/cacert.pem" "$DASH_RUN/cacert.pem"
     # Bundled modern curl: the Kindle's own can't negotiate TLS with Cloudflare.
+    # Checked with a time limit, so a curl that can't start never hangs Start.
     rm -f "$DASH_RUN/curl"
     if [ -f "$BIN/curl" ] && cp "$BIN/curl" "$DASH_RUN/curl" && chmod 755 "$DASH_RUN/curl" &&
-        "$DASH_RUN/curl" -V > /dev/null 2>&1; then
-        log "using bundled $("$DASH_RUN/curl" -V | head -n 1 | cut -d' ' -f1-2)"
+        run_with_timeout 5 "$DASH_RUN/curl" -V > "$DASH_RUN/curl.version" 2>&1; then
+        log "using bundled $(head -n 1 "$DASH_RUN/curl.version" | cut -d' ' -f1-2)"
     else
         rm -f "$DASH_RUN/curl"
         log "bundled curl could not run here; using the Kindle's own (may fail TLS)"
@@ -60,6 +61,22 @@ daemon_running() {
     [ -n "$pg" ] && kill -0 "$pg" 2>/dev/null
 }
 
+# Anything of ours still running from an earlier Start, Stop or Update Now
+# (for example one that got stuck): stop it so only one copy runs.
+kill_strays() {
+    local d pid cmd
+    for d in /proc/[0-9]*; do
+        pid=${d#/proc/}
+        [ "$pid" = "$$" ] && continue
+        cmd=$(tr '\000' ' ' < "$d/cmdline" 2>/dev/null) || continue
+        case "$cmd" in
+            *"$DASH_RUN/daemon.sh"* | *"$DASH_RUN/update.sh"* | *"$DASH_RUN/curl "* | *"dashboard/bin/ctl.sh"*)
+                kill -KILL "$pid" 2>/dev/null
+                ;;
+        esac
+    done
+}
+
 stop_daemon() {
     local pg
     pg=$(cat "$DASH_RUN/daemon.pgid" 2>/dev/null)
@@ -70,12 +87,16 @@ stop_daemon() {
         sleep 1
         kill -KILL -"$pg" 2>/dev/null
     fi
+    kill_strays
     rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid"
     rmdir "$DASH_RUN/lock" 2>/dev/null
 }
 
 case "$1" in
     start)
+        mkdir -p "$DASH_RUN"
+        log "start requested"
+        flush_log
         check_config || exit 1
         stop_daemon
         prepare_run

@@ -244,6 +244,23 @@ draw_image() { # show the latest dashboard image full screen
     eips -f -g "$img" >/dev/null 2>&1
 }
 
+run_with_timeout() { # seconds command... -> the command's status, or 124 if it overran
+    local limit=$1 i=0 pid
+    shift
+    "$@" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$i" -ge "$limit" ]; then
+            kill -KILL "$pid" 2>/dev/null
+            wait "$pid" 2>/dev/null
+            return 124
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+    wait "$pid"
+}
+
 update_running() {
     [ -d "$DASH_RUN/lock" ] && kill -0 "$(cat "$DASH_RUN/lock/pid" 2>/dev/null)" 2>/dev/null
 }

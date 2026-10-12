@@ -44,6 +44,13 @@ EOF
 
 git clone -q --depth 1 --recurse-submodules --shallow-submodules -b "$MBEDTLS_TAG" \
     https://github.com/Mbed-TLS/mbedtls "$WORK/mbedtls"
+# Read randomness from /dev/urandom. The default, /dev/random, blocks on
+# kernels older than 5.6 without a hardware entropy source, which includes
+# the Kindle's: curl then hangs at startup. (With musl, Mbed TLS doesn't use
+# getrandom(), so this file is its only entropy source.)
+sed -i.bak 's|^//#define MBEDTLS_PLATFORM_DEV_RANDOM "/dev/random"|#define MBEDTLS_PLATFORM_DEV_RANDOM "/dev/urandom"|' \
+    "$WORK/mbedtls/include/mbedtls/mbedtls_config.h"
+grep -q '^#define MBEDTLS_PLATFORM_DEV_RANDOM "/dev/urandom"' "$WORK/mbedtls/include/mbedtls/mbedtls_config.h"
 "$CMAKE" -S "$WORK/mbedtls" -B "$WORK/mbedtls/build" -DCMAKE_TOOLCHAIN_FILE="$WORK/tc/toolchain.cmake" \
     -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF \
     -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON -DCMAKE_INSTALL_PREFIX="$WORK/prefix" > /dev/null
