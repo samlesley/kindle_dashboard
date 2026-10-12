@@ -74,11 +74,10 @@ export async function gatherDashboard(cfg: Config, deps: Deps, at: Date, params:
   const trainsTask = (async (): Promise<TrainsData> => {
     const board: LdbBoard = live
       ? await fetchLiveBoard(cfg.ldbUrl, cfg.stationCrs, cfg.filterCrs, deps.rdmKey!, deps.fetch)
-      : mockBoard(scenario, now.minutes, cfg.walkMinutes);
+      : mockBoard(scenario, now.minutes);
     return {
       departures: buildDepartures(board, {
         filterCrs: cfg.filterCrs,
-        walkMinutes: cfg.walkMinutes,
         leaveByMinutes: cfg.leaveByMinutes,
         now: now.minutes,
       }),

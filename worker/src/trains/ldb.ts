@@ -56,8 +56,6 @@ export interface Departure {
 
 export interface BoardOptions {
   filterCrs: string;
-  /** Trains expected sooner than this are left out. */
-  walkMinutes: number;
   /** Leave-by is the scheduled time minus this. */
   leaveByMinutes: number;
   /** Minutes since local midnight. */
@@ -108,8 +106,9 @@ export function buildDepartures(board: LdbBoard, opts: BoardOptions): Departure[
     const etdTime = parseHhmm(etdRaw);
     const expected = cancelled ? null : etdTime ?? (etd === "delayed" ? null : std);
 
-    const due = minutesUntil(expected ?? std, opts.now);
-    if (due < opts.walkMinutes) continue;
+    // Keep each train until it has left: until after its scheduled time, or
+    // after its expected time if that is later.
+    if (Math.max(minutesUntil(std, opts.now), minutesUntil(expected ?? std, opts.now)) < 0) continue;
 
     let status: TrainStatus;
     let statusText: string;

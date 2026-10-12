@@ -41,10 +41,10 @@ function service(std: number, westbound: boolean, n: number): LdbService {
 /**
  * Half-hourly each way, all day: towards Milngavie (via Queen St and
  * Partick) at :26 and :56, towards Springburn at :11 and :41.
- * The scenario changes the first trains towards Partick that are at least
- * `leadMinutes` away, i.e. the ones that will be shown.
+ * The scenario changes the first trains towards Partick still to leave,
+ * i.e. the ones that will be shown.
  */
-export function mockBoard(scenario: MockScenario, now: number, leadMinutes: number): LdbBoard {
+export function mockBoard(scenario: MockScenario, now: number): LdbBoard {
   const services: LdbService[] = [];
   const start = now - 10;
   for (let t = start; t <= now + 120; t++) {
@@ -53,7 +53,7 @@ export function mockBoard(scenario: MockScenario, now: number, leadMinutes: numb
     if (m === 11 || m === 41) services.push(service(t, false, services.length));
   }
 
-  const shown = services.filter((s) => s.destination?.[0]?.crs === "MLN" && minutesUntil(parseHhmm(s.std)!, now) >= leadMinutes);
+  const shown = services.filter((s) => s.destination?.[0]?.crs === "MLN" && minutesUntil(parseHhmm(s.std)!, now) >= 0);
   const board: LdbBoard = {
     generatedAt: new Date().toISOString(),
     locationName: "Alexandra Parade",

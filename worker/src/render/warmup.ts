@@ -25,9 +25,9 @@ function sampleModel(): DashboardModel {
       ok: true,
       data: {
         departures: [
-          { scheduled: "06:56", status: "late", statusText: "EXP 07:03", leaveBy: "06:59", destination: "MILNGAVIE" },
+          { scheduled: "06:56", status: "late", statusText: "EXP 07:03", leaveBy: "06:51", destination: "MILNGAVIE" },
           { scheduled: "07:26", status: "cancelled", statusText: "CANCELLED", leaveBy: null, destination: "MILNGAVIE" },
-          { scheduled: "07:56", status: "on-time", statusText: "ON TIME", leaveBy: "07:52", destination: "MILNGAVIE" },
+          { scheduled: "07:56", status: "on-time", statusText: "ON TIME", leaveBy: "07:51", destination: "MILNGAVIE" },
         ],
         message: "TRAINS BETWEEN GLASGOW QUEEN STREET AND PARTICK MAY BE DELAYED BY UP TO 15 MINUTES.",
       },

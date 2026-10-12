@@ -27,7 +27,7 @@ STATION_CRS = "AXP"                 # Alexandra Parade
 STATION_NAME = "ALEXANDRA PARADE"
 FILTER_CRS = "PTK"                  # only services calling at Partick
 HEADING_TO = "QUEEN ST / PARTICK"   # label shown after the station name
-WALK_MINUTES = "4"                  # shown in the heading; trains expected sooner are hidden
+WALK_MINUTES = "4"                  # shown in the heading (WALK 4 MIN)
 LEAVE_BY_MINUTES = "5"              # leave-by = scheduled time minus this, even if late
 
 # "false" = mock trains (sample data). "true" = live Rail Data Marketplace data,

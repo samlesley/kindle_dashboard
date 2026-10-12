@@ -159,7 +159,7 @@ ignores). Neither is ever written to `wrangler.toml`.
 | `STATION_NAME` | `ALEXANDRA PARADE` | Shown in the departures heading. |
 | `FILTER_CRS` | `PTK` | Only services calling at Partick. |
 | `HEADING_TO` | `QUEEN ST / PARTICK` | Shown after the station name. |
-| `WALK_MINUTES` | `4` | Shown in the heading (`WALK 4 MIN`). Hides trains expected sooner than this. |
+| `WALK_MINUTES` | `4` | Shown in the heading (`WALK 4 MIN`). |
 | `LEAVE_BY_MINUTES` | `5` | Leave-by = scheduled time − this. It stays put when a train runs late. |
 | `LIVE_TRAINS` | `true` | `true` uses live data, but only when `RDM_KEY` is set. Otherwise, or when `false`, mock data is used. |
 | `MOCK_SCENARIO` | `normal` | `normal`, `delayed` or `cancelled`. |
@@ -177,9 +177,10 @@ Secrets: `ACCESS_TOKEN` (required), `RDM_KEY` (for live trains).
 **Trains.** The Worker asks the Live Departure Board for Alexandra Parade with
 `filterCrs=PTK&filterType=to`, so only services calling at Partick come back.
 It also drops any service whose calling points show it doesn't call there;
-the mock relies on that check. It takes the first three services expected at
-least `WALK_MINUTES` from now. For cancelled trains, and for "Delayed" ones
-with no estimate, the scheduled time is used instead. Each row shows:
+the mock relies on that check. It shows the first three trains that haven't
+left yet. A train stays until the minute after its scheduled time, or after its
+expected time if it's running late. Cancelled trains, and "Delayed" ones with
+no estimate, go after their scheduled time. Each row shows:
 
 - the scheduled time;
 - the status: `ON TIME`, `EXP hh:mm` (boxed if late), `DELAYED` (boxed) or
