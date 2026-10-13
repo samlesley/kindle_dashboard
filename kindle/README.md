@@ -197,7 +197,8 @@ python3 kindle/test/test_client.py
   starting, sleeping, a timer wake with a slow fetch, a failed fetch, waking to
   read, Update Now and Stop.
 - **Clock:** which digits are redrawn and where, the wake-up each minute (and
-  the early draw when under 20 seconds are left), the midnight refresh, and a
+  the early draw when under 20 seconds are left), a refresh that falls due as
+  the Kindle goes to sleep (kept, not skipped), the midnight refresh, and a
   simulated sleep with clock wakes, with and without deep sleep, checking
   that Wi-Fi stays off.
 - **Failure handling:** a bundled curl that hangs at startup, a download stuck

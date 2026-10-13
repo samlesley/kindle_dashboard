@@ -322,10 +322,21 @@ class ClockFunctions(unittest.TestCase):
                 calls = self.run_at(epoch(2026, 10, 9, 6, 49, 50), "set_wake_timer", shell)
                 self.assertEqual(calls[-1], "set com.lab126.powerd rtcWakeup 20")
                 self.assertEqual((self.run_dir / "next_epoch").read_text().strip(), str(epoch(2026, 10, 9, 6, 50)))
-                # Clock off: as before, only refreshes, at least a minute away.
+                # So is one that has just passed: the Kindle repeats readyToSuspend
+                # every few seconds, and one can come just after the refresh time.
+                for late in (0, 4):
+                    calls = self.run_at(epoch(2026, 10, 9, 6, 50, late), "set_wake_timer", shell)
+                    self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 20"])
+                    self.assertEqual((self.run_dir / "next_epoch").read_text().strip(), str(epoch(2026, 10, 9, 6, 50)))
+                # Clock off: as before, only refreshes, at least a minute away...
                 (self.run_dir / "config.sh").write_text('CLOCK=0\n')
                 calls = self.run_at(epoch(2026, 10, 9, 6, 44, 20), "set_wake_timer", shell)
                 self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 340"])
+                # ...and one moments away or just passed is kept, a minute late.
+                for t in (epoch(2026, 10, 9, 6, 49, 50), epoch(2026, 10, 9, 6, 50, 5)):
+                    calls = self.run_at(t, "set_wake_timer", shell)
+                    self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 60"])
+                    self.assertEqual((self.run_dir / "next_epoch").read_text().strip(), str(epoch(2026, 10, 9, 6, 50)))
                 (self.run_dir / "config.sh").write_text("")
 
     def test_refreshes_at_midnight(self):

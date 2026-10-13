@@ -226,17 +226,18 @@ battery() { # -> BATT, percent
 }
 
 set_wake_timer() { # arm the RTC wake for the next refresh, or the next clock minute if sooner
-    local now next secs tick early=30
+    local now next secs tick
     now=$(date +%s)
     next=$(cat "$DASH_RUN/next_epoch" 2>/dev/null)
     case "$next" in '' | *[!0-9]*) next=0 ;; esac
-    # With the clock on, a refresh only moments away is still kept (see below).
-    clock_on && early=0
-    if [ "$next" -le $((now + early)) ]; then
+    if [ "$next" -eq 0 ]; then
         next_slot "$now"
         next=$NEXT_EPOCH
         echo "$next" > "$DASH_RUN/next_epoch"
     fi
+    # Only an update moves the refresh time on. A refresh that is moments
+    # away or has just passed (the Kindle is about to sleep a few seconds
+    # after it) gets the shortest wake below, never skipped.
     secs=$((next - now))
     if clock_on; then
         # Wake at the start of the next minute. If that's too close to go to
