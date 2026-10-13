@@ -1,0 +1,59 @@
+name = "kindle-dashboard"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Invocation logs (with CPU time) in the dashboard: Workers > kindle-dashboard > Logs.
+[observability]
+enabled = true
+
+# Bundle the VT323 TrueType file as an ArrayBuffer module.
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = false
+
+# Cache for weather (3 h) and the BBC headline (30 min).
+# Wrangler 4.45+ creates this namespace on first deploy and writes its id back here.
+[[kv_namespaces]]
+binding = "CACHE"
+
+[vars]
+# Location for the weather forecast (Alexandra Parade station).
+LAT = "55.8637"
+LON = "-4.2107"
+
+# Departure board.
+STATION_CRS = "AXP"                 # Alexandra Parade
+STATION_NAME = "ALEXANDRA PARADE"
+FILTER_CRS = "PTK"                  # only services calling at Partick
+HEADING_TO = "QUEEN ST / PARTICK"   # label shown after the station name
+WALK_MINUTES = "4"                  # shown in the heading (WALK 4 MIN)
+LEAVE_BY_MINUTES = "5"              # leave-by = scheduled time minus this, even if late
+
+# "false" = mock trains (sample data). "true" = live Rail Data Marketplace data,
+# used only when the RDM_KEY secret is also set.
+LIVE_TRAINS = "true"
+# Mock scenario when not live: normal | delayed | cancelled
+MOCK_SCENARIO = "normal"
+# Endpoint shown on your Rail Data Marketplace product's Specification tab
+# (without the trailing /{crs}).
+LDB_URL = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard"
+
+# Weather thresholds.
+RAIN_CHANCE_PCT = "50"   # rain warning when rain chance >= this...
+RAIN_FROM_HOUR = "7"     # ...between these hours (inclusive)
+RAIN_TO_HOUR = "22"
+COLD_BELOW_C = "3"       # "wrap up warm" when the low is below this
+HOT_ABOVE_C = "22"       # "take water" when the high is above this
+
+# The outlook box under the hourly strip: today until EVENING_FROM, this
+# evening until TOMORROW_FROM, then tomorrow.
+EVENING_FROM = "15:00"
+TOMORROW_FROM = "18:30"
+
+# "true" shows the BBC top story line, "false" hides it.
+SHOW_HEADLINE = "true"
+
+# Secrets (never put these in this file):
+#   npx wrangler secret put ACCESS_TOKEN
+#   npx wrangler secret put RDM_KEY
