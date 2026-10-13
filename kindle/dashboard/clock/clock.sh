@@ -4,3 +4,7 @@
 # left edge of each digit of HH:MM.
 CLOCK_Y=112
 CLOCK_X1=804 CLOCK_X2=844 CLOCK_X3=924 CLOCK_X4=964
+# The note shown while updates fail: offline.png at OFFLINE_X,OFFLINE_Y,
+# then offline0.png-offline9.png at the same top edge, one per digit of HH:MM.
+OFFLINE_X=711 OFFLINE_Y=74
+OFFLINE_X1=929 OFFLINE_X2=944 OFFLINE_X3=974 OFFLINE_X4=989

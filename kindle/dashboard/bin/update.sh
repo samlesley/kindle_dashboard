@@ -102,7 +102,14 @@ if [ -z "$DASHBOARD_URL" ] || [ -z "$DASHBOARD_TOKEN" ]; then
 elif wifi_connect; then
     fetch && OK=1
 else
-    log "Wi-Fi did not connect within ${WIFI_TIMEOUT}s"
+    log "Wi-Fi did not connect within ${WIFI_TIMEOUT}s ($WIFI_STATE)"
+fi
+
+# Shown on screen while updates keep failing (see draw_offline).
+if [ "$OK" = 1 ]; then
+    rm -f "$DASH_RUN/offline_since"
+elif [ ! -f "$DASH_RUN/offline_since" ]; then
+    date +%s > "$DASH_RUN/offline_since"
 fi
 
 if asleep; then

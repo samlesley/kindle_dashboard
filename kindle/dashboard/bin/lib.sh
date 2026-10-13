@@ -26,8 +26,10 @@ load_config() {
         . "$DASH_HOME/config.sh"
     fi
     CA_BUNDLE="$DASH_RUN/cacert.pem"
-    # Where the clock digits go (generated from the Worker's layout).
+    # Where the clock digits and the offline note go (generated from the
+    # Worker's layout).
     CLOCK_Y=""
+    OFFLINE_Y=""
     [ -f "$DASH_RUN/clock/clock.sh" ] && . "$DASH_RUN/clock/clock.sh"
 }
 
@@ -207,15 +209,47 @@ wifi_set() { # 1 or 0
     lipc-set-prop com.lab126.cmd wirelessEnable "$1" 2>/dev/null
 }
 
-wifi_connect() { # switch Wi-Fi on and wait for a connection; success if connected
-    local i=0
+# Switch Wi-Fi fully off and on again: the Wi-Fi service (wifid) as well as
+# the setting, then ask for the network last used. On a Paperwhite 10, Wi-Fi
+# once stopped connecting while asleep for ten hours, with the usual on and
+# off every update not helping, until the Kindle was woken by hand.
+wifi_restart() {
+    local net
+    lipc-set-prop -i com.lab126.wifid enable 0 2>/dev/null
+    wifi_set 0
+    sleep 2
     wifi_set 1
-    while [ "$i" -lt "$WIFI_TIMEOUT" ]; do
-        [ "$(prop com.lab126.wifid cmState)" = CONNECTED ] && return 0
+    lipc-set-prop -i com.lab126.wifid enable 1 2>/dev/null
+    net=$(cat "$DASH_RUN/wifi_network" 2>/dev/null)
+    [ -n "$net" ] && lipc-set-prop -s com.lab126.cmd ensureConnection "wifi:$net" 2>/dev/null
+}
+
+# Switch Wi-Fi on (restarting it if the last update failed) and wait up to
+# WIFI_TIMEOUT seconds for a connection. Success if connected; otherwise
+# WIFI_STATE describes the Wi-Fi state, for the log.
+wifi_connect() {
+    local end net st sw sv
+    end=$(($(date +%s) + WIFI_TIMEOUT))
+    if [ -f "$DASH_RUN/offline_since" ]; then
+        log "restarting Wi-Fi, as the last update failed"
+        wifi_restart
+    else
+        wifi_set 1
+    fi
+    while [ "$(prop com.lab126.wifid cmState)" != CONNECTED ]; do
+        if [ "$(date +%s)" -ge "$end" ]; then
+            st=$(prop com.lab126.wifid cmState)
+            sw=$(prop com.lab126.cmd wirelessEnable)
+            sv=$(prop com.lab126.wifid enable)
+            WIFI_STATE="cmState ${st:-?}, wirelessEnable ${sw:-?}, wifid enable ${sv:-?}"
+            return 1
+        fi
         sleep 1
-        i=$((i + 1))
     done
-    return 1
+    # The network to ask for if Wi-Fi ever needs restarting.
+    net=$(prop com.lab126.wifid currentEssid)
+    [ -n "$net" ] && printf '%s' "$net" > "$DASH_RUN/wifi_network"
+    return 0
 }
 
 battery() { # -> BATT, percent
@@ -273,6 +307,7 @@ draw_image() { # show the latest dashboard image full screen; fails if there is 
 
 show_dashboard() { # the latest image, with the clock brought up to now
     draw_image || return 1
+    draw_offline
     clock_on || return 0
     echo "- - - -" > "$DASH_RUN/clock_shown"
     draw_clock
@@ -289,12 +324,15 @@ clock_on() {
     [ "$CLOCK" = 1 ] && [ -n "$CLOCK_Y" ] && [ -s "$DASH_RUN/clock/0.png" ]
 }
 
-draw_digit() { # digit x -> paste one clock digit at that position
-    local img="$DASH_RUN/clock/$1.png"
-    if [ -x "$FBINK" ] && "$FBINK" -q -g file="$img",x="$2",y="$CLOCK_Y" >/dev/null 2>&1; then
+draw_at() { # image x y -> paste a small image at that position
+    if [ -x "$FBINK" ] && "$FBINK" -q -g file="$1",x="$2",y="$3" >/dev/null 2>&1; then
         return 0
     fi
-    eips -g "$img" -x "$2" -y "$CLOCK_Y" >/dev/null 2>&1
+    eips -g "$1" -x "$2" -y "$3" >/dev/null 2>&1
+}
+
+draw_digit() { # digit x -> paste one clock digit at that position
+    draw_at "$DASH_RUN/clock/$1.png" "$2" "$CLOCK_Y"
 }
 
 draw_clock() { # [epoch] -> show that time (default now) on the dashboard's clock
@@ -312,6 +350,27 @@ draw_clock() { # [epoch] -> show that time (default now) on the dashboard's cloc
     # Unless woken to read meanwhile (then it stays gone).
     [ -f "$DASH_RUN/clock_shown" ] && echo "$w1 $w2 $w3 $w4" > "$DASH_RUN/clock_shown"
     echo $(($(cat "$DASH_RUN/clock_count" 2>/dev/null || echo 0) + 1)) > "$DASH_RUN/clock_count"
+}
+
+# ---------------------------------------------------------------- offline note
+# While updates fail, "OFFLINE SINCE HH:MM" replaces the TIME label above the
+# clock, so a dashboard that has stopped updating doesn't look current just
+# because the clock still ticks. "offline_since" holds the time of the first
+# failure (update.sh keeps it); the next successful update redraws the whole
+# screen without the note. Its images are made by the Worker like the digits.
+
+# shellcheck disable=SC2153  # OFFLINE_X* come from clock/clock.sh
+draw_offline() {
+    local since
+    since=$(cat "$DASH_RUN/offline_since" 2>/dev/null)
+    case "$since" in '' | *[!0-9]*) return 0 ;; esac
+    [ -n "$OFFLINE_Y" ] && [ -s "$DASH_RUN/clock/offline.png" ] || return 0
+    london "$since"
+    draw_at "$DASH_RUN/clock/offline.png" "$OFFLINE_X" "$OFFLINE_Y"
+    draw_at "$DASH_RUN/clock/offline$((L_H / 10)).png" "$OFFLINE_X1" "$OFFLINE_Y"
+    draw_at "$DASH_RUN/clock/offline$((L_H % 10)).png" "$OFFLINE_X2" "$OFFLINE_Y"
+    draw_at "$DASH_RUN/clock/offline$((L_MI / 10)).png" "$OFFLINE_X3" "$OFFLINE_Y"
+    draw_at "$DASH_RUN/clock/offline$((L_MI % 10)).png" "$OFFLINE_X4" "$OFFLINE_Y"
 }
 
 run_with_timeout() { # seconds command... -> the command's status, or 124 if it overran

@@ -59,9 +59,20 @@ build of curl 8.22.0 with Mbed TLS 3.6.7, made from source with
 `tools/build-curl.sh` (see `third_party/`). It reads randomness from
 `/dev/urandom`, because `/dev/random` blocks on the Kindle's kernel.
 
-If a fetch fails, the last image stays on screen. The footer's `NEXT` time is
-then earlier than the clock, which tells you a refresh was missed. The front light is
-never touched; it is already off while the Kindle sleeps.
+If a fetch fails, the last image stays on screen, and `OFFLINE SINCE 07:30`
+(the time of the first failure) replaces the `TIME` label above the clock, in
+a white box. Otherwise the ticking clock would make an old screen look
+current. The next successful update redraws the whole screen without it. Like
+the clock digits, the note's images are made by the Worker.
+
+After a failed update, the next one restarts Wi-Fi from scratch before
+connecting: it switches off the Kindle's Wi-Fi service as well as the setting,
+then asks for the network it last connected to. Without this, Wi-Fi once
+stayed stuck for ten hours while the Kindle slept, until it was woken by hand.
+Whether the restart clears that on a real Kindle hasn't been seen yet; the log
+will show it (see Checking it works).
+
+The front light is never touched; it is already off while the Kindle sleeps.
 
 ## Install
 
@@ -109,7 +120,7 @@ automatically, so the system partition is never modified.
 | `SCHEDULE` | `06:00-10:00=10 10:00-22:00=30 22:00-06:00=120` | Refresh bands, `START-END=MINUTES`, in UK time. |
 | `CLOCK` | `1` | `1` keeps the time in the top right current (a short wake each minute, no Wi-Fi). `0` turns that off. |
 | `DRAW_DELAY` | `2` | Seconds to wait after the Kindle goes to sleep before drawing. |
-| `WIFI_TIMEOUT` | `60` | Give up on Wi-Fi after this many seconds. |
+| `WIFI_TIMEOUT` | `60` | Give up on Wi-Fi after this many seconds. Installs from before 13 Oct 2026 may still have `30` in `config.sh` (`install.sh` never overwrites it); use 60. |
 | `FETCH_TIMEOUT` | `20` | Give up on the download after this many seconds. |
 
 Tap **Dashboard: Start** after changing anything.
@@ -134,9 +145,19 @@ the previous update. With `CLOCK=0` the log also shows each
 `readyToSuspend` and `wakeupFromSuspend` event, and a `wake timer set` line
 after every update.
 
-This client hasn't been run on a real Kindle yet, only against a simulated one
-(see Tests). If something's off, send me the log; just check it first for
-anything you'd rather not share.
+When Wi-Fi fails, the log says what state it was in, and the next update
+restarts it. If the restart works, the `fetched` line follows it:
+
+```
+2026-10-13 07:40:44 Wi-Fi did not connect within 60s (cmState NA, wirelessEnable 1, wifid enable 1)
+2026-10-13 07:49:46 update (scheduled): starting (state screenSaver, wifi 0)
+2026-10-13 07:49:46 clock: redrawn 9 times since the last update
+2026-10-13 07:49:46 restarting Wi-Fi, as the last update failed
+2026-10-13 07:49:58 fetched new image (122344 bytes, next 08:00, battery 80%)
+```
+
+The client has run on a Paperwhite 10 since 12 Oct 2026. If something's off,
+send me the log; just check it first for anything you'd rather not share.
 
 ## Troubleshooting
 
@@ -149,7 +170,9 @@ anything you'd rather not share.
 | Start leaves a blank screen and no `start requested` line appears in the log | Start didn't run. Tap the top of the screen, then Home, and tap Dashboard: Start again. |
 | `bundled curl could not run here` | The bundled curl didn't run on this Kindle, so the client fell back to the Kindle's own, which Cloudflare refuses. Tell me what the log says. |
 | `fetch failed (curl exit 22)` with `403` | The token in `config.sh` doesn't match the Worker's `ACCESS_TOKEN`. |
-| `Wi-Fi did not connect within 60s` | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
+| `OFFLINE SINCE` above the clock | Updates have failed since that time; the log says why. The trains and weather are as of the footer's `UPDATED` time. |
+| `Wi-Fi did not connect within 60s` once or twice | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
+| `Wi-Fi did not connect` again and again, each after `restarting Wi-Fi` | Restarting Wi-Fi didn't clear it. Check your Wi-Fi works; if it does, waking the Kindle fixes it for now. Send me the log. |
 | Footer `NEXT` time is in the past | The last refresh failed; the log says why. |
 | The screen doesn't change overnight or between refreshes | Look for `wake timer set` before each refresh. If it's there but no `timer wake: refresh due` follows, the wake timer isn't working on this firmware. Tell me. |
 | The clock stops between refreshes | Check the `clock: redrawn` count in the log. If it stays at 0 or 1, the Kindle isn't waking each minute. Tell me, and set `CLOCK=0` meanwhile. |
@@ -173,7 +196,7 @@ dashboard/bin/daemon.sh            background script: reacts to power events
 dashboard/bin/update.sh            one refresh: Wi-Fi, fetch, draw, wake timer
 dashboard/bin/lib.sh               shared helpers, UK time and schedule maths
 dashboard/bin/curl                 modern static curl for ARM (the Kindle's is too old)
-dashboard/clock/                   clock digit images and their positions (made by the Worker)
+dashboard/clock/                   clock digit and offline note images, and their positions (made by the Worker)
 dashboard/certs/cacert.pem         trusted certificate list for curl
 tools/build-curl.sh                rebuilds dashboard/bin/curl from source
 third_party/                       licences and versions for the bundled curl
@@ -195,7 +218,9 @@ python3 kindle/test/test_client.py
 - **Simulated Kindle:** runs the real scripts against fake versions of the
   Kindle's power and Wi-Fi controls, `curl` and FBInk. It goes through
   starting, sleeping, a timer wake with a slow fetch, a failed fetch, waking to
-  read, Update Now and Stop.
+  read, Update Now and Stop. Also Wi-Fi that won't connect until restarted:
+  the failed update shows `OFFLINE SINCE`, the next one restarts Wi-Fi and
+  fetches.
 - **Clock:** which digits are redrawn and where, the wake-up each minute (and
   the early draw when under 20 seconds are left), a refresh that falls due as
   the Kindle goes to sleep (kept, not skipped), the midnight refresh, and a

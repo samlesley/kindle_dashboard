@@ -39,6 +39,12 @@ export interface DashboardModel {
   headline: Section<string> | null;
   battery: number | null;
   nextRefresh: string | null;
+  /**
+   * Never set by the Worker: while its updates fail, the Kindle shows
+   * "OFFLINE SINCE HH:MM" in place of the TIME label, pasted from images made
+   * by `npm run clock`. Set in tests to check those images.
+   */
+  offlineSince?: string;
 }
 
 export interface Deps {

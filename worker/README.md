@@ -82,11 +82,18 @@ minute it pastes in the digits that changed, from ten small images in
 the dashboard exactly as the Worker draws that digit, and `clock.sh` there
 records where the digits go.
 
-If you change the clock's font, size or position in `src/layout.ts`, run
-`npm run clock` to remake those files, then reinstall them on the Kindle.
-`test/clock.test.ts` checks two things: pasting the images gives exactly the
-image the Worker would draw at that time, and the files in the repository are
-up to date.
+The same folder holds the note the Kindle shows while its updates fail:
+`OFFLINE SINCE HH:MM` in a white box in place of the `TIME` label
+(`offline.png`, plus smaller digits `offline0.png`-`offline9.png`). The Worker
+never draws it itself; `offlineSince` in the dashboard model exists so the
+tests can check the images.
+
+If you change the clock's or the label's font, size or position in
+`src/layout.ts`, run `npm run clock` to remake those files, then reinstall them
+on the Kindle. `test/clock.test.ts` checks three things: pasting the images
+gives exactly the image the Worker would draw at that time (or with that
+note), the note stays clear of the clock digits, and the files in the
+repository are up to date.
 
 ## Preview locally
 
@@ -244,7 +251,7 @@ src/weather.ts        Open-Meteo client, summary, boxes, strip, outlook
 src/headline.ts       BBC RSS
 src/cache.ts          memory → KV (or Cache API) read-through cache
 src/layout.ts         all positions and sizes
-src/clock.ts          clock digit images and positions for the Kindle
+src/clock.ts          clock digit and offline note images and positions for the Kindle
 src/render/*          TrueType reader, rasteriser, canvas, PNG encoder, warm-up
 scripts/preview.ts    npm run preview
 scripts/clock.ts      npm run clock: writes kindle/dashboard/clock/

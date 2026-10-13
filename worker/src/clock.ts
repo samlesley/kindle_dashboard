@@ -1,9 +1,10 @@
 // Files the Kindle uses to keep the clock current without fetching: one PNG
 // per digit, cut from the dashboard exactly as the Worker draws it, and a
-// shell file saying where each digit goes. Written to kindle/dashboard/clock/
-// by `npm run clock`; not used by the Worker itself.
+// shell file saying where each digit goes. Also the "OFFLINE SINCE HH:MM"
+// note it shows while updates fail, with its own smaller digits. Written to
+// kindle/dashboard/clock/ by `npm run clock`; not used by the Worker itself.
 
-import { clockCells, drawClockDigit } from "./layout";
+import { clockCells, drawClockDigit, drawOfflineDigit, drawOfflineNote, offlineNote } from "./layout";
 import { encodeGreyscalePng } from "./render/png";
 import type { Font } from "./render/text";
 
@@ -13,8 +14,16 @@ export function clockFiles(font: Font): Map<string, Uint8Array | string> {
     const c = drawClockDigit(font, d);
     files.set(`${d}.png`, encodeGreyscalePng(c.width, c.height, c.data));
   }
+  const note = drawOfflineNote(font);
+  files.set("offline.png", encodeGreyscalePng(note.width, note.height, note.data));
+  for (let d = 0; d <= 9; d++) {
+    const c = drawOfflineDigit(font, d);
+    files.set(`offline${d}.png`, encodeGreyscalePng(c.width, c.height, c.data));
+  }
   const cells = clockCells(font);
   const xs = cells.xs.map((x, i) => `CLOCK_X${i + 1}=${x}`).join(" ");
+  const off = offlineNote(font);
+  const offXs = off.xs.map((x, i) => `OFFLINE_X${i + 1}=${x}`).join(" ");
   files.set(
     "clock.sh",
     [
@@ -24,6 +33,10 @@ export function clockFiles(font: Font): Map<string, Uint8Array | string> {
       "# left edge of each digit of HH:MM.",
       `CLOCK_Y=${cells.top}`,
       xs,
+      "# The note shown while updates fail: offline.png at OFFLINE_X,OFFLINE_Y,",
+      "# then offline0.png-offline9.png at the same top edge, one per digit of HH:MM.",
+      `OFFLINE_X=${off.left} OFFLINE_Y=${off.top}`,
+      offXs,
       "",
     ].join("\n"),
   );

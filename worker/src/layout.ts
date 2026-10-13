@@ -49,6 +49,13 @@ const CLOCK_SIZE = 100;
 const CLOCK_RIGHT = R - 24;
 const CLOCK_BASE = BAND_TOP + BAND_H - 16;
 
+// The TIME label above it. While the Kindle's updates fail, it pastes
+// "OFFLINE SINCE HH:MM" over the label (see offlineNote below).
+const LABEL_SIZE = 37.5;
+const LABEL_RIGHT = R - 24;
+const LABEL_BASE = BAND_TOP + 37;
+const OFFLINE_TEXT = "OFFLINE SINCE ";
+
 /** Nearest multiple of 2.5 px (keeps character advances on whole pixels). */
 const snap = (size: number) => Math.round(size / 2.5) * 2.5;
 
@@ -125,7 +132,13 @@ function drawHeader(p: Painter, m: DashboardModel): void {
   p.c.fillRect(L, BAND_TOP, CW, BAND_H, BLACK);
   p.text(m.now.weekday, L + 24, BAND_TOP + 37, 37.5, WHITE);
   p.text(m.now.dayMonth, L + 24, BAND_TOP + BAND_H - 16, 100, WHITE);
-  p.text("TIME", R - 24, BAND_TOP + 37, 37.5, WHITE, "right");
+  if (m.offlineSince) {
+    const note = offlineNote(p.font);
+    p.c.fillRect(note.left, note.top, note.width, note.height, WHITE);
+    p.text(`${OFFLINE_TEXT}${m.offlineSince}`, LABEL_RIGHT, LABEL_BASE, LABEL_SIZE, BLACK, "right");
+  } else {
+    p.text("TIME", LABEL_RIGHT, LABEL_BASE, LABEL_SIZE, WHITE, "right");
+  }
   p.text(m.now.hhmm, CLOCK_RIGHT, CLOCK_BASE, CLOCK_SIZE, WHITE, "right");
 }
 
@@ -150,6 +163,52 @@ export function drawClockDigit(font: Font, digit: number): Canvas {
   const cells = clockCells(font);
   const c = new Canvas(cells.width, cells.height, BLACK);
   font.draw(c, String(digit), 0, CLOCK_BASE - cells.top, CLOCK_SIZE, WHITE);
+  return c;
+}
+
+/**
+ * Where the Kindle pastes the "OFFLINE SINCE HH:MM" note: the whole note at
+ * left/top (covering the TIME label), then one digit per cell of HH:MM.
+ */
+export interface OfflineNote {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** Left edge of each digit's cell, in HH:MM order (the colon is skipped). */
+  xs: number[];
+  digitWidth: number;
+}
+
+export function offlineNote(font: Font): OfflineNote {
+  const advance = font.measure("0", LABEL_SIZE);
+  const textLeft = LABEL_RIGHT - font.measure(`${OFFLINE_TEXT}00:00`, LABEL_SIZE);
+  const left = textLeft - 8;
+  const top = LABEL_BASE - font.capHeight(LABEL_SIZE) - 6;
+  const n = OFFLINE_TEXT.length;
+  return {
+    left,
+    top,
+    width: LABEL_RIGHT + 8 - left,
+    height: LABEL_BASE + 6 - top,
+    xs: [n, n + 1, n + 3, n + 4].map((i) => textLeft + i * advance),
+    digitWidth: advance,
+  };
+}
+
+/** The note (black on a white box) as drawDashboard draws it, with the digits of its time left blank. */
+export function drawOfflineNote(font: Font): Canvas {
+  const note = offlineNote(font);
+  const c = new Canvas(note.width, note.height, WHITE);
+  font.draw(c, `${OFFLINE_TEXT}  :  `, LABEL_RIGHT - note.left, LABEL_BASE - note.top, LABEL_SIZE, BLACK, "right");
+  return c;
+}
+
+/** One digit of the note's time, cut to its cell. */
+export function drawOfflineDigit(font: Font, digit: number): Canvas {
+  const note = offlineNote(font);
+  const c = new Canvas(note.digitWidth, note.height, WHITE);
+  font.draw(c, String(digit), 0, LABEL_BASE - note.top, LABEL_SIZE, BLACK);
   return c;
 }
 

@@ -171,8 +171,10 @@ FAKE_SET = """#!/bin/sh
 [ "$1" = -i ] || [ "$1" = -s ] && shift
 echo "set $1 $2 $3" >> "$FAKE/calls.log"
 printf '%s' "$3" > "$FAKE/props/$1.$2"
+# With "wifi_stuck", Wi-Fi won't connect until the Wi-Fi service is restarted.
+[ "$1.$2.$3" = com.lab126.wifid.enable.0 ] && rm -f "$FAKE/wifi_stuck"
 if [ "$1.$2" = com.lab126.cmd.wirelessEnable ]; then
-    if [ "$3" = 1 ]; then echo CONNECTED; else echo NA; fi > "$FAKE/props/com.lab126.wifid.cmState"
+    if [ "$3" = 1 ] && [ ! -f "$FAKE/wifi_stuck" ]; then echo CONNECTED; else echo NA; fi > "$FAKE/props/com.lab126.wifid.cmState"
 fi
 """
 
@@ -209,20 +211,37 @@ for a in "$@"; do
 done
 img=${spec%%,*}
 case "$img" in
-    */clock/*.png)
+    */clock/[0-9].png)
         d=${img##*/}
         x=${spec#*,x=}
         echo "digit ${d%.png} x=${x%%,*}" >> "$FAKE/calls.log"
+        ;;
+    */clock/*.png)
+        d=${img##*/}
+        x=${spec#*,x=}
+        echo "paste ${d%.png} x=${x%%,*} y=${spec##*,y=}" >> "$FAKE/calls.log"
         ;;
     *) echo "draw $(md5sum "$img" | cut -c1-8)" >> "$FAKE/calls.log" ;;
 esac
 """
 
 
-def clock_positions():
+def clock_values():
     text = (CLOCK_DIR / "clock.sh").read_text()
-    values = dict(part.split("=") for line in text.splitlines() if line.startswith("CLOCK_") for part in line.split())
+    return dict(part.split("=") for line in text.splitlines() if line and not line.startswith("#") for part in line.split())
+
+
+def clock_positions():
+    values = clock_values()
     return [values[f"CLOCK_X{i}"] for i in range(1, 5)]
+
+
+def offline_pastes(hhmm):
+    """What draw_offline pastes for "OFFLINE SINCE hh:mm", as the fake FBInk logs it."""
+    v = clock_values()
+    digits = hhmm.replace(":", "")
+    cells = [f"paste offline{d} x={v[f'OFFLINE_X{i + 1}']} y={v['OFFLINE_Y']}" for i, d in enumerate(digits)]
+    return [f"paste offline x={v['OFFLINE_X']} y={v['OFFLINE_Y']}"] + cells
 
 
 def epoch(y, mo, d, h, mi, s=0):
@@ -338,6 +357,17 @@ class ClockFunctions(unittest.TestCase):
                     self.assertEqual(calls, ["set com.lab126.powerd rtcWakeup 60"])
                     self.assertEqual((self.run_dir / "next_epoch").read_text().strip(), str(epoch(2026, 10, 9, 6, 50)))
                 (self.run_dir / "config.sh").write_text("")
+
+    def test_offline_note(self):
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                # Nothing while updates work.
+                (self.run_dir / "offline_since").unlink(missing_ok=True)
+                self.assertEqual(self.run_at(epoch(2026, 10, 13, 9, 0), "draw_offline", shell), [])
+                # Failing since 07:30:11: the note, then its four digits.
+                (self.run_dir / "offline_since").write_text(str(epoch(2026, 10, 13, 7, 30, 11)))
+                calls = self.run_at(epoch(2026, 10, 13, 9, 0), "draw_offline", shell)
+                self.assertEqual(calls, offline_pastes("07:30"))
 
     def test_refreshes_at_midnight(self):
         # So the date changes with the clock, even if the schedule skips midnight.
@@ -575,6 +605,66 @@ class Simulation(unittest.TestCase):
         self.assertIn("fetch failed (curl exit 22) from example.test:", log)
         self.assertIn("dashboard address: example.test", log)
         self.assertNotIn(TOKEN, log)
+
+    def test_restarts_stuck_wifi(self):
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                if name != SHELLS[0][0]:
+                    self.tearDown()
+                    self.setUp()
+                self.use_shell(name, shell)
+                self.stuck_wifi_scenario()
+
+    def stuck_wifi_scenario(self):
+        self.props({"com.lab126.wifid.currentEssid": "HomeNet"})
+        self.ctl("start")
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="first fetch")
+        self.assertEqual((self.run_dir / "wifi_network").read_text(), "HomeNet")
+        self.props({"com.lab126.powerd.state": "screenSaver"})
+        self.event("goingToScreenSaver 1")
+        self.wait_for(lambda: any(c.startswith("draw") for c in self.calls()), what="draw on sleep")
+        self.assertFalse(any(c.startswith("paste") for c in self.calls()))
+
+        # Timer wake with Wi-Fi stuck: no connection within WIFI_TIMEOUT (5 s),
+        # and "OFFLINE SINCE" goes on screen over the redrawn image.
+        self.clear_calls()
+        (self.fake / "wifi_stuck").write_text("")
+        (self.run_dir / "next_epoch").write_text(str(int(time.time())))
+        began = time.time()
+        self.event("wakeupFromSuspend 0")
+        self.wait_for(lambda: "Wi-Fi did not connect" in self.log_text() and self.update_idle(), what="failed update")
+        self.assertLess(time.time() - began, 15)
+        calls = self.calls()
+        self.assertNotIn("curl", calls)
+        self.assertNotIn("set com.lab126.wifid enable 0", calls)  # no restart the first time
+        since = int((self.run_dir / "offline_since").read_text())
+        draw = next(i for i, c in enumerate(calls) if c.startswith("draw"))
+        hhmm = datetime.fromtimestamp(since, LONDON).strftime("%H:%M")
+        self.assertEqual([c for c in calls[draw + 1 :] if c.startswith("paste")], offline_pastes(hhmm))
+        self.assertIn("Wi-Fi did not connect within 5s (cmState NA, wirelessEnable 1, wifid enable ?)", self.log_text())
+
+        # The next update restarts Wi-Fi first, which clears it here. The
+        # fetched image is drawn without the note.
+        self.clear_calls()
+        (self.run_dir / "next_epoch").write_text(str(int(time.time())))
+        self.event("wakeupFromSuspend 0")
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="update after restart")
+        calls = self.calls()
+        self.assertEqual(
+            calls[:5],
+            [
+                "set com.lab126.wifid enable 0",
+                "set com.lab126.cmd wirelessEnable 0",
+                "set com.lab126.cmd wirelessEnable 1",
+                "set com.lab126.wifid enable 1",
+                "set com.lab126.cmd ensureConnection wifi:HomeNet",
+            ],
+        )
+        self.assertTrue(any(c.startswith("draw") for c in calls))
+        self.assertFalse(any(c.startswith("paste") for c in calls))
+        self.assertFalse((self.run_dir / "offline_since").exists())
+        self.assertIn("restarting Wi-Fi, as the last update failed", self.log_text())
+        self.assertIn("OK at", (self.run_dir / "last_result").read_text())
 
     def test_falls_back_to_kindle_curl(self):
         # A bundled binary that can't run (e.g. wrong CPU) means using the Kindle's curl.
