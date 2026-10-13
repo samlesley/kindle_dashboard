@@ -164,11 +164,12 @@ ignores). Neither is ever written to `wrangler.toml`.
 | `LIVE_TRAINS` | `true` | `true` uses live data, but only when `RDM_KEY` is set. Otherwise, or when `false`, mock data is used. |
 | `MOCK_SCENARIO` | `normal` | `normal`, `delayed` or `cancelled`. |
 | `LDB_URL` | `https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard` | Live Departure Board endpoint, without `/{crs}`. |
-| `RAIN_CHANCE_PCT` | `50` | Wet notice threshold… |
+| `RAIN_CHANCE_PCT` | `50` | Rain warning threshold… |
 | `RAIN_FROM_HOUR`, `RAIN_TO_HOUR` | `7`, `22` | …within these hours (inclusive). |
-| `COLD_BELOW_C` | `3` | Cold notice when the low is below this. |
-| `HOT_ABOVE_C` | `22` | Hot notice when the high is above this. |
-| `TOMORROW_FROM_HOUR` | `17` | From this hour until midnight, the notice box shows tomorrow's weather. |
+| `COLD_BELOW_C` | `3` | `WRAP UP WARM.` when the low is below this. |
+| `HOT_ABOVE_C` | `22` | `TAKE WATER.` when the high is above this. |
+| `EVENING_FROM` | `15:00` | The box under the strip switches to this evening… |
+| `TOMORROW_FROM` | `18:30` | …and then to tomorrow. |
 | `SHOW_HEADLINE` | `true` | `false` hides the BBC line. |
 
 Secrets: `ACCESS_TOKEN` (required), `RDM_KEY` (for live trains).
@@ -209,16 +210,22 @@ forecast is kept for up to 24 h and the heading says `AS OF hh:mm`):
 - The summary line looks 18 hours ahead.
 - The hourly strip starts with `NOW`, then every 3 hours on the 00/03/06…
   grid. Each gauge segment is 20% chance of rain.
-- Notices, until 17:00: warnings about the rest of today, only when a rule
-  applies:
-  - wet: rain chance ≥ 50% between 07:00 and 22:00, e.g.
-    `RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
-  - cold: a low below 3° still to come, e.g. `LOW OF 1° AT 06:00. WRAP UP WARM.`
-  - hot: a high above 22° still to come, e.g. `HIGH OF 24° AT 15:00. TAKE WATER.`
-- From 17:00 to midnight the notice box always shows tomorrow instead: the
-  usual weather between 07:00 and 22:00, the low and high, rain by the same rule
-  (or `DRY.`), and the cold and hot warnings, e.g.
-  `TOMORROW: CLOUDY, 7° TO 13°. RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
+- The box under the strip always has one line, which moves on through the day:
+
+  | From | Shows | Covers |
+  | --- | --- | --- |
+  | Midnight | `TODAY: …` | the rest of today (after midnight, the new day) |
+  | 15:00 | `THIS EVENING: …` | now until midnight |
+  | 18:30 | `TOMORROW: …` | the whole of tomorrow |
+
+  Each line gives the usual weather between 07:00 and 22:00, the low and high,
+  then rain (or `DRY.`), then `WRAP UP WARM.` if the low is below 3° or
+  `TAKE WATER.` if the high is above 22°. Rain counts when its chance is ≥ 50%
+  between 07:00 and 22:00. When most hours are wet, the rain warning leads
+  instead of the usual weather. For example:
+  - `TODAY: CLOUDY, 7° TO 13°. RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.`
+  - `THIS EVENING: 8° TO 13°. RAIN NOW, PEAK 18:00. TAKE AN UMBRELLA.`
+  - `TOMORROW: PARTLY CLOUDY, 1° TO 9°. DRY. WRAP UP WARM.`
 
 **Headline:** the first `<item>` title from `feeds.bbci.co.uk/news/rss.xml`,
 cached for 30 minutes. It wraps onto two lines when there's room.
@@ -233,7 +240,7 @@ src/handler.ts        token check, query parameters, PNG / JSON response
 src/dashboard.ts      gathers trains, weather, headline; each can fail alone
 src/trains/ldb.ts     Live Departure Board client and row selection
 src/trains/mock.ts    sample boards (normal / delayed / cancelled)
-src/weather.ts        Open-Meteo client, summary, boxes, strip, notices
+src/weather.ts        Open-Meteo client, summary, boxes, strip, outlook
 src/headline.ts       BBC RSS
 src/cache.ts          memory → KV (or Cache API) read-through cache
 src/layout.ts         all positions and sizes

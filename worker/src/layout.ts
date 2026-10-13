@@ -244,7 +244,7 @@ function drawWeather(p: Painter, m: DashboardModel): number {
   p.text(w.summary, L, SUMMARY, 52.5, BLACK, "left", CW);
   drawBoxes(p, w);
   drawStrip(p, w);
-  return drawNotices(p, w.notices);
+  return drawOutlook(p, w.outlook);
 }
 
 function drawBoxes(p: Painter, w: WeatherView): void {
@@ -294,16 +294,12 @@ function drawStrip(p: Painter, w: WeatherView): void {
   });
 }
 
-function drawNotices(p: Painter, notices: string[]): number {
-  if (notices.length === 0) return STRIP_BOTTOM;
+function drawOutlook(p: Painter, outlook: string | null): number {
+  if (!outlook) return STRIP_BOTTOM;
   const size = 40;
   const lineH = 34;
   const maxW = CW - 46;
-  // At most two lines: one per notice, or one notice wrapped over two.
-  const lines =
-    notices.length === 1
-      ? p.wrap(`> ${notices[0]}`, size, maxW, 2)
-      : notices.slice(0, 2).map((n) => `> ${n}`);
+  const lines = p.wrap(`> ${outlook}`, size, maxW, 2);
   const h = 62 + (lines.length - 1) * lineH;
   p.c.dashedRect(L, NOTICE_TOP, CW, h, 2, 6, 4, BLACK);
   lines.forEach((line, i) => p.text(line, L + 23, NOTICE_TOP + 42 + i * lineH, size, BLACK, "left", maxW));

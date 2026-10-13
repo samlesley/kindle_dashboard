@@ -39,13 +39,17 @@ MOCK_SCENARIO = "normal"
 # (without the trailing /{crs}).
 LDB_URL = "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120/GetDepartureBoard"
 
-# Weather notice thresholds.
-RAIN_CHANCE_PCT = "50"   # wet notice when rain chance >= this...
+# Weather thresholds.
+RAIN_CHANCE_PCT = "50"   # rain warning when rain chance >= this...
 RAIN_FROM_HOUR = "7"     # ...between these hours (inclusive)
 RAIN_TO_HOUR = "22"
-COLD_BELOW_C = "3"       # cold notice when the low is below this
-HOT_ABOVE_C = "22"       # hot notice when the high is above this
-TOMORROW_FROM_HOUR = "17" # from this hour the notice box shows tomorrow's weather
+COLD_BELOW_C = "3"       # "wrap up warm" when the low is below this
+HOT_ABOVE_C = "22"       # "take water" when the high is above this
+
+# The outlook box under the hourly strip: today until EVENING_FROM, this
+# evening until TOMORROW_FROM, then tomorrow.
+EVENING_FROM = "15:00"
+TOMORROW_FROM = "18:30"
 
 # "true" shows the BBC top story line, "false" hides it.
 SHOW_HEADLINE = "true"

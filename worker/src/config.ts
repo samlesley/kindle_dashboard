@@ -1,5 +1,7 @@
 // Worker environment and parsed configuration.
 
+import { parseHhmm } from "./time";
+
 /** The subset of the Workers KV API this project uses. */
 export interface KVLike {
   get(key: string, type: "json"): Promise<unknown>;
@@ -27,7 +29,8 @@ export interface Env {
   RAIN_TO_HOUR?: string;
   COLD_BELOW_C?: string;
   HOT_ABOVE_C?: string;
-  TOMORROW_FROM_HOUR?: string;
+  EVENING_FROM?: string;
+  TOMORROW_FROM?: string;
   SHOW_HEADLINE?: string;
 }
 
@@ -50,7 +53,10 @@ export interface Config {
   rainToHour: number;
   coldBelowC: number;
   hotAboveC: number;
-  tomorrowFromHour: number;
+  /** Minutes since midnight when the outlook box moves on to this evening. */
+  eveningFrom: number;
+  /** Minutes since midnight when the outlook box moves on to tomorrow. */
+  tomorrowFrom: number;
   showHeadline: boolean;
 }
 
@@ -88,7 +94,8 @@ export function loadConfig(env: Env): Config {
     rainToHour: num(env.RAIN_TO_HOUR, 22),
     coldBelowC: num(env.COLD_BELOW_C, 3),
     hotAboveC: num(env.HOT_ABOVE_C, 22),
-    tomorrowFromHour: num(env.TOMORROW_FROM_HOUR, 17),
+    eveningFrom: parseHhmm(env.EVENING_FROM) ?? 15 * 60,
+    tomorrowFrom: parseHhmm(env.TOMORROW_FROM) ?? 18 * 60 + 30,
     showHeadline: bool(env.SHOW_HEADLINE, true),
   };
 }

@@ -42,7 +42,7 @@ function sampleModel(): DashboardModel {
         rain: { totalMm: 6, window: "15:00-23:00" },
         gusts: { mph: 35, dir: "SW" },
         hours: [0, 9, 12, 15, 18, 21].map((h, i) => ({ label: i ? `${String(h).padStart(2, "0")}:00` : "NOW", temp: 7 + i, chance: i * 20 })),
-        notices: ["RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA."],
+        outlook: "TODAY: CLOUDY, 7° TO 13°. RAIN FROM 15:00, PEAK 18:00. TAKE AN UMBRELLA.",
         sunrise: "07:31",
         sunset: "18:28",
       },

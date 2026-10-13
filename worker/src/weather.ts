@@ -30,7 +30,8 @@ export interface WeatherView {
   rain: { totalMm: number; window: string | null };
   gusts: { mph: number; dir: string };
   hours: HourSlot[];
-  notices: string[];
+  /** The box under the strip: today, this evening or tomorrow, depending on the time. */
+  outlook: string | null;
   sunrise: string | null;
   sunset: string | null;
 }
@@ -211,33 +212,30 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
     return best;
   };
 
-  // Notices. Until the evening: warnings about the rest of today, only when
-  // a rule applies. From the evening: always one line about tomorrow.
-  const notices: string[] = [];
-  const nextDay = dayEnd + 1;
-  if (now.hour >= cfg.tomorrowFromHour && nextDay < h.time.length) {
-    const nextEnd = lastOfDate(dateOf(h.time[nextDay]), nextDay);
-    const lo = roundTemp(temp(extreme(nextDay, nextEnd, -1)));
-    const hi = roundTemp(temp(extreme(nextDay, nextEnd, 1)));
-    const code = typicalCode(nextDay, nextEnd);
-    const parts = [`TOMORROW: ${describeCode(code)}, ${lo}° TO ${hi}°.`];
-    const rain = rainNotice(nextDay, nextEnd);
+  /** One line about the hours [from, to]: the usual weather, low and high, rain (or dry), and warnings. */
+  const outlookLine = (label: string, from: number, to: number): string => {
+    const lo = roundTemp(temp(extreme(from, to, -1)));
+    const hi = roundTemp(temp(extreme(from, to, 1)));
+    const code = typicalCode(from, to);
+    const rain = rainNotice(from, to);
+    // A wet day with a rain warning: the warning says it, so skip "RAIN" up front.
+    const sky = rain && isPrecipCode(code) ? "" : `${describeCode(code)}, `;
+    const parts = [`${label}: ${sky}${lo === hi ? `${lo}°` : `${lo}° TO ${hi}°`}.`];
     if (rain) parts.push(rain);
     else if (!isPrecipCode(code)) parts.push("DRY.");
     if (lo < cfg.coldBelowC) parts.push("WRAP UP WARM.");
     if (hi > cfg.hotAboveC) parts.push("TAKE WATER.");
-    notices.push(parts.join(" "));
+    return parts.join(" ");
+  };
+
+  // Outlook: the rest of today (after midnight, the new day), called "this
+  // evening" from the afternoon, then tomorrow.
+  let outlook: string | null = null;
+  if (now.minutes >= cfg.tomorrowFrom) {
+    const next = dayEnd + 1;
+    if (next < h.time.length) outlook = outlookLine("TOMORROW", next, lastOfDate(dateOf(h.time[next]), next));
   } else {
-    const rain = rainNotice(i0, dayEnd);
-    if (rain) notices.push(rain);
-    const coldest = extreme(i0, dayEnd, -1);
-    const warmest = extreme(i0, dayEnd, 1);
-    if (roundTemp(temp(coldest)) < cfg.coldBelowC) {
-      notices.push(`LOW OF ${roundTemp(temp(coldest))}° AT ${clockOf(h.time[coldest])}. WRAP UP WARM.`);
-    }
-    if (roundTemp(temp(warmest)) > cfg.hotAboveC) {
-      notices.push(`HIGH OF ${roundTemp(temp(warmest))}° AT ${clockOf(h.time[warmest])}. TAKE WATER.`);
-    }
+    outlook = outlookLine(now.minutes >= cfg.eveningFrom ? "THIS EVENING" : "TODAY", i0, dayEnd);
   }
 
   // Sunrise/sunset: today's, or tomorrow's once today's sunset has passed.
@@ -252,7 +250,7 @@ export function buildWeather(data: ForecastData, now: LondonTime, cfg: Config): 
     rain: { totalMm: total, window: rainWindow },
     gusts: { mph: Math.round(h.wind_gusts_10m[gust] ?? 0), dir: compass(h.wind_direction_10m[gust] ?? 0) },
     hours,
-    notices,
+    outlook,
     sunrise: d >= 0 ? clockOf(data.daily.sunrise[d]) : null,
     sunset: d >= 0 ? clockOf(data.daily.sunset[d]) : null,
   };
