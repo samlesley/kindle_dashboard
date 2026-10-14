@@ -28,17 +28,17 @@ const STATUS_X = 521; // EXPECTED column
 const TOP_LINE = 52; // baseline of "P140 TRAINS+WX"
 const BAND_TOP = 64; // reversed-out date/time band
 const BAND_H = 126;
-const TRAINS_HEADING = 239;
-const COLUMN_HEADS = 281;
-const ROWS_TOP = 294;
-const ROWS_BOTTOM = 648;
-const WEATHER_HEADING = 701;
-const SUMMARY = 756;
-const BOXES_TOP = 772;
+const TRAINS_HEADING = 236;
+const COLUMN_HEADS = 276;
+const ROWS_TOP = 289;
+const ROWS_BOTTOM = 634; // three rows of 115 px
+const WEATHER_HEADING = 684;
+const SUMMARY = 737;
+const BOXES_TOP = 751;
 const BOXES_H = 140;
-const STRIP_TOP = 924;
-const STRIP_BOTTOM = 1174;
-const NOTICE_TOP = 1192;
+const STRIP_TOP = 903;
+const STRIP_BOTTOM = 1153;
+const NOTICE_TOP = 1168;
 const FOOTER_RULE = 1398;
 const FOOTER_BASE = 1432;
 
@@ -377,7 +377,7 @@ function drawFooter(p: Painter, m: DashboardModel, contentBottom: number): void 
   const badgeSize = 37.5;
   const badgeW = p.width("BBC", badgeSize) + 16;
   const textX = L + badgeW + 16;
-  const lastBase = FOOTER_RULE - 30;
+  const lastBase = FOOTER_RULE - 24;
   const ruleFor = (lines: number) => lastBase - (lines - 1) * lineH - 46;
 
   const story = m.headline.ok ? m.headline.data : `[HEADLINE UNAVAILABLE: ${m.headline.error}]`;
