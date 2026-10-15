@@ -17,6 +17,7 @@ load_config() {
     WIFI_TIMEOUT=60
     FETCH_TIMEOUT=20
     CLOCK=1
+    WAKE_TO_RECONNECT=1
     TICK=30 # seconds between checks while on the sleep screen without deep sleep
     # The working copy is used once running, so the USB storage can be
     # unavailable (e.g. plugged into a computer) without breaking anything.
@@ -241,7 +242,8 @@ wifi_connect() {
             st=$(prop com.lab126.wifid cmState)
             sw=$(prop com.lab126.cmd wirelessEnable)
             sv=$(prop com.lab126.wifid enable)
-            WIFI_STATE="cmState ${st:-?}, wirelessEnable ${sw:-?}, wifid enable ${sv:-?}"
+            wpa_state
+            WIFI_STATE="cmState ${st:-?}, wirelessEnable ${sw:-?}, wifid enable ${sv:-?}, wpa_state ${WPA:-?}"
             return 1
         fi
         sleep 1
@@ -250,6 +252,43 @@ wifi_connect() {
     net=$(prop com.lab126.wifid currentEssid)
     [ -n "$net" ] && printf '%s' "$net" > "$DASH_RUN/wifi_network"
     return 0
+}
+
+wpa_state() { # -> WPA, what the Wi-Fi driver's supplicant is doing (empty if unknown)
+    WPA=""
+    command -v wpa_cli > /dev/null 2>&1 || return 0
+    WPA=$(run_with_timeout 3 wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')
+}
+
+# Wake the Kindle as if the power button had been pressed, and put it back
+# to sleep afterwards. While asleep, Wi-Fi on a Paperwhite 10 can get stuck
+# for hours (cmState NA, restarts not helping), yet it connects within
+# seconds once the Kindle is awake. "waking" tells the daemon that the wake
+# and the sleep that follows are ours, so it leaves them alone.
+wake_up() { # -> success once awake
+    local i=0
+    : > "$DASH_RUN/waking"
+    date +%s > "$DASH_RUN/last_wake" # tried at most once an hour, even if it fails
+    lipc-set-prop -i com.lab126.powerd wakeUp 1 2>/dev/null
+    while asleep; do
+        if [ "$i" -ge 10 ]; then
+            rm -f "$DASH_RUN/waking"
+            return 1
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
+}
+
+back_to_sleep() { # -> success once the sleep screen is showing and has finished drawing
+    local i=0
+    lipc-set-prop -i com.lab126.powerd powerButton 1 2>/dev/null
+    until asleep; do
+        [ "$i" -ge 10 ] && return 1
+        sleep 1
+        i=$((i + 1))
+    done
+    sleep "$DRAW_DELAY"
 }
 
 battery() { # -> BATT, percent

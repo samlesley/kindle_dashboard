@@ -171,10 +171,22 @@ FAKE_SET = """#!/bin/sh
 [ "$1" = -i ] || [ "$1" = -s ] && shift
 echo "set $1 $2 $3" >> "$FAKE/calls.log"
 printf '%s' "$3" > "$FAKE/props/$1.$2"
-# With "wifi_stuck", Wi-Fi won't connect until the Wi-Fi service is restarted.
-[ "$1.$2.$3" = com.lab126.wifid.enable.0 ] && rm -f "$FAKE/wifi_stuck"
+state=$(cat "$FAKE/props/com.lab126.powerd.state" 2>/dev/null)
+# With "wifi_stuck", Wi-Fi won't connect until the Wi-Fi service is restarted;
+# with "wifi_stuck_asleep" as well, only a restart while awake clears it.
+if [ "$1.$2.$3" = com.lab126.wifid.enable.0 ]; then
+    if [ ! -f "$FAKE/wifi_stuck_asleep" ] || [ "$state" = active ]; then rm -f "$FAKE/wifi_stuck"; fi
+fi
 if [ "$1.$2" = com.lab126.cmd.wirelessEnable ]; then
     if [ "$3" = 1 ] && [ ! -f "$FAKE/wifi_stuck" ]; then echo CONNECTED; else echo NA; fi > "$FAKE/props/com.lab126.wifid.cmState"
+fi
+# Waking and the power button change the power state and send its event.
+if [ "$1.$2" = com.lab126.powerd.wakeUp ] && [ "$state" != active ]; then
+    printf active > "$FAKE/props/com.lab126.powerd.state"
+    echo "outOfScreenSaver 1" > "$FAKE/events.fifo"
+elif [ "$1.$2" = com.lab126.powerd.powerButton ] && [ "$state" = active ]; then
+    printf screenSaver > "$FAKE/props/com.lab126.powerd.state"
+    echo "goingToScreenSaver 1" > "$FAKE/events.fifo"
 fi
 """
 
@@ -641,7 +653,9 @@ class Simulation(unittest.TestCase):
         draw = next(i for i, c in enumerate(calls) if c.startswith("draw"))
         hhmm = datetime.fromtimestamp(since, LONDON).strftime("%H:%M")
         self.assertEqual([c for c in calls[draw + 1 :] if c.startswith("paste")], offline_pastes(hhmm))
-        self.assertIn("Wi-Fi did not connect within 5s (cmState NA, wirelessEnable 1, wifid enable ?)", self.log_text())
+        self.assertIn(
+            "Wi-Fi did not connect within 5s (cmState NA, wirelessEnable 1, wifid enable ?, wpa_state ?)", self.log_text()
+        )
 
         # The next update restarts Wi-Fi first, which clears it here. The
         # fetched image is drawn without the note.
@@ -665,6 +679,87 @@ class Simulation(unittest.TestCase):
         self.assertFalse((self.run_dir / "offline_since").exists())
         self.assertIn("restarting Wi-Fi, as the last update failed", self.log_text())
         self.assertIn("OK at", (self.run_dir / "last_result").read_text())
+
+    def test_wakes_to_reconnect(self):
+        for name, shell in SHELLS:
+            with self.subTest(shell=name):
+                if name != SHELLS[0][0]:
+                    self.tearDown()
+                    self.setUp()
+                self.use_shell(name, shell)
+                self.wake_scenario()
+
+    def wifi_failures(self):
+        return self.log_text().count("Wi-Fi did not connect")
+
+    def timer_update(self, what):
+        self.clear_calls()
+        (self.run_dir / "next_epoch").write_text(str(int(time.time())))
+        self.event("wakeupFromSuspend 0")
+        self.wait_for(lambda: "update (scheduled): done" in self.log_text()[self.mark :] and self.update_idle(), what=what)
+        self.mark = len(self.log_text())
+        return self.calls()
+
+    def wake_scenario(self):
+        self.props({"com.lab126.wifid.currentEssid": "HomeNet"})
+        self.ctl("start")
+        self.wait_for(lambda: "curl" in self.calls() and self.update_idle(), what="first fetch")
+        self.props({"com.lab126.powerd.state": "screenSaver"})
+        self.event("goingToScreenSaver 1")
+        self.wait_for(lambda: any(c.startswith("draw") for c in self.calls()), what="draw on sleep")
+        self.mark = len(self.log_text())
+
+        # Wi-Fi stuck in a way only a restart while awake clears: the first
+        # update fails, the second restarts Wi-Fi asleep and fails too.
+        (self.fake / "wifi_stuck").write_text("")
+        (self.fake / "wifi_stuck_asleep").write_text("")
+        calls = self.timer_update("first failure")
+        self.assertNotIn("set com.lab126.wifid enable 0", calls)
+        calls = self.timer_update("restart while asleep")
+        self.assertIn("set com.lab126.wifid enable 0", calls)
+        self.assertNotIn("set com.lab126.powerd wakeUp 1", calls)
+        self.assertEqual(self.wifi_failures(), 2)
+
+        # The third wakes the Kindle, reconnects, fetches, puts it back to
+        # sleep and redraws, without the daemon treating the wake as a reader.
+        calls = self.timer_update("wake to reconnect")
+        order = [
+            c
+            for c in calls
+            if c in ("set com.lab126.powerd wakeUp 1", "set com.lab126.wifid enable 0", "curl")
+            or c.startswith("draw")
+            or "powerButton" in c
+        ]
+        self.assertEqual(
+            order[:4],
+            ["set com.lab126.powerd wakeUp 1", "set com.lab126.wifid enable 0", "curl", "set com.lab126.powerd powerButton 1"],
+        )
+        self.assertTrue(any(c.startswith("draw") for c in order[4:]))
+        self.assertFalse(any(c.startswith("paste") for c in calls))  # no OFFLINE SINCE
+        after = calls[calls.index("set com.lab126.powerd powerButton 1") :]
+        self.assertIn("set com.lab126.cmd wirelessEnable 0", after)  # Wi-Fi off again once asleep
+        self.assertTrue(any("rtcWakeup" in c for c in after))
+        self.assertEqual((self.fake / "props" / "com.lab126.powerd.state").read_text(), "screenSaver")
+        log = self.log_text()
+        self.assertIn("waking the Kindle to reconnect, as Wi-Fi has failed 2 times in a row", log)
+        self.assertIn("event outOfScreenSaver (state active)", log)
+        self.assertIn("back to sleep after waking to reconnect", log)
+        self.assertNotIn("stopped the running update", log)
+        self.assertNotIn("interrupted", log)
+        self.assertEqual(self.wifi_failures(), 2)
+        self.assertFalse((self.run_dir / "offline_since").exists())
+        self.assertFalse((self.run_dir / "wifi_failures").exists())
+        self.assertFalse((self.run_dir / "waking").exists())
+        self.assertEqual((self.run_dir / "wifi_was").read_text().strip(), "0")  # still asleep, as before
+
+        # Stuck again within the hour: no second wake yet.
+        (self.fake / "wifi_stuck").write_text("")
+        self.timer_update("failure after recovery")
+        self.timer_update("restart after recovery")
+        calls = self.timer_update("wake held back")
+        self.assertNotIn("set com.lab126.powerd wakeUp 1", calls)
+        self.assertIn("not waking the Kindle to reconnect again until", self.log_text())
+        self.assertEqual(self.wifi_failures(), 5)
 
     def test_falls_back_to_kindle_curl(self):
         # A bundled binary that can't run (e.g. wrong CPU) means using the Kindle's curl.

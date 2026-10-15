@@ -29,7 +29,7 @@ fi
 echo $$ > "$DASH_RUN/lock/pid"
 rm -f "$DASH_RUN/pending"
 release() {
-    rm -f "$DASH_RUN/lock/pid" "$DASH_RUN/fetch.png"
+    rm -f "$DASH_RUN/lock/pid" "$DASH_RUN/fetch.png" "$DASH_RUN/waking"
     rmdir "$DASH_RUN/lock" 2>/dev/null
 }
 trap release EXIT
@@ -96,13 +96,55 @@ if clock_on; then
     log "clock: redrawn $(cat "$DASH_RUN/clock_count" 2>/dev/null || echo 0) times since the last update"
     rm -f "$DASH_RUN/clock_count"
 fi
+
+# Wi-Fi failures in a row. The first is often just a moment's trouble, and
+# the next update restarts Wi-Fi. If that fails too while asleep, Wi-Fi is
+# probably stuck in a way only waking the Kindle clears, so the next update
+# does that, at most once an hour (the home screen shows meanwhile).
+FAILS=$(cat "$DASH_RUN/wifi_failures" 2>/dev/null)
+case "$FAILS" in '' | *[!0-9]*) FAILS=0 ;; esac
+should_wake() {
+    local last now
+    [ "$MODE" = scheduled ] && [ "$WAKE_TO_RECONNECT" = 1 ] && [ "$FAILS" -ge 2 ] && asleep || return 1
+    last=$(cat "$DASH_RUN/last_wake" 2>/dev/null)
+    case "$last" in '' | *[!0-9]*) last=0 ;; esac
+    now=$(date +%s)
+    if [ $((now - last)) -lt 3600 ]; then
+        hhmm $((last + 3600))
+        log "not waking the Kindle to reconnect again until $HHMM"
+        return 1
+    fi
+}
+
 OK=0
+WOKE=0
 if [ -z "$DASHBOARD_URL" ] || [ -z "$DASHBOARD_TOKEN" ]; then
     log "update ($MODE): DASHBOARD_URL or DASHBOARD_TOKEN missing from config.sh"
-elif wifi_connect; then
-    fetch && OK=1
 else
-    log "Wi-Fi did not connect within ${WIFI_TIMEOUT}s ($WIFI_STATE)"
+    if should_wake; then
+        log "waking the Kindle to reconnect, as Wi-Fi has failed $FAILS times in a row"
+        if wake_up; then
+            WOKE=1
+        else
+            power_state
+            log "could not wake the Kindle (state $PSTATE)"
+        fi
+    fi
+    if wifi_connect; then
+        rm -f "$DASH_RUN/wifi_failures"
+        fetch && OK=1
+    else
+        echo $((FAILS + 1)) > "$DASH_RUN/wifi_failures"
+        log "Wi-Fi did not connect within ${WIFI_TIMEOUT}s ($WIFI_STATE)"
+    fi
+    if [ "$WOKE" = 1 ]; then
+        if back_to_sleep; then
+            log "back to sleep after waking to reconnect"
+        else
+            power_state
+            log "could not put the Kindle back to sleep (state $PSTATE)"
+        fi
+    fi
 fi
 
 # Shown on screen while updates keep failing (see draw_offline).

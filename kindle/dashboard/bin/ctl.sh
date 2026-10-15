@@ -107,7 +107,7 @@ stop_daemon() {
         kill -KILL -"$PG" 2>/dev/null
     fi
     kill_strays
-    rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid" "$DASH_RUN/clock_shown"
+    rm -f "$DASH_RUN/daemon.pgid" "$DASH_RUN/pending" "$DASH_RUN/deferred" "$DASH_RUN/lock/pid" "$DASH_RUN/clock_shown" "$DASH_RUN/waking"
     rmdir "$DASH_RUN/lock" 2>/dev/null
 }
 

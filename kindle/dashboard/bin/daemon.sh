@@ -12,6 +12,9 @@
 #                       or just update the clock (no Wi-Fi)
 #   outOfScreenSaver    woken to read: stop any fetch, restore Wi-Fi
 #
+# update.sh may wake the Kindle itself when Wi-Fi is stuck; the wake and the
+# sleep after it are then left to update.sh.
+#
 # The Kindle doesn't always enter deep sleep (for example while plugged into
 # a computer it stays on the sleep screen), so a light check every TICK
 # seconds (and on each minute, for the clock) also does both. In deep sleep
@@ -36,6 +39,12 @@ busy() {
     update_running || [ -f "$DASH_RUN/pending" ]
 }
 
+# update.sh woke the Kindle itself to reconnect Wi-Fi (see wake_up), and
+# puts it back to sleep and redraws when done.
+our_wake() {
+    [ -f "$DASH_RUN/waking" ] && update_running
+}
+
 stop_update() {
     local i=0
     if update_running; then
@@ -49,6 +58,7 @@ stop_update() {
 }
 
 on_sleep() {
+    our_wake && return 0
     # Remember the Wi-Fi setting once per sleep (until woken to read), so a
     # repeated event doesn't record the "off" we set ourselves.
     if [ ! -f "$DASH_RUN/wifi_was" ]; then
@@ -123,6 +133,7 @@ on_wake() {
 }
 
 on_read() {
+    our_wake && return 0
     stop_update
     rm -f "$DASH_RUN/deferred" "$DASH_RUN/pending" "$DASH_RUN/clock_shown"
     if [ -f "$DASH_RUN/wifi_was" ]; then

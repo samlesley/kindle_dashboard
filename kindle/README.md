@@ -67,10 +67,21 @@ the clock digits, the note's images are made by the Worker.
 
 After a failed update, the next one restarts Wi-Fi from scratch before
 connecting: it switches off the Kindle's Wi-Fi service as well as the setting,
-then asks for the network it last connected to. Without this, Wi-Fi once
-stayed stuck for ten hours while the Kindle slept, until it was woken by hand.
-Whether the restart clears that on a real Kindle hasn't been seen yet; the log
-will show it (see Checking it works).
+then asks for the network it last connected to. That clears a brief hiccup,
+but not the stuck state seen on 13 and 14 Oct, when Wi-Fi stayed down for
+ten hours or more while the Kindle slept (`cmState NA` in the log), restart
+after restart. Waking the Kindle by hand cleared it every time, within
+seconds.
+
+So if Wi-Fi has failed twice in a row while asleep (the second time despite
+the restart), the next update wakes the Kindle itself, as if the power button
+had been pressed. It restarts Wi-Fi and fetches while awake, then puts the
+Kindle back to sleep and draws the new dashboard. The home screen shows for
+up to about a minute meanwhile, and the front light comes on if you have it
+set above zero. It does this at most once an hour, so a real outage (the
+router off, say) doesn't keep waking it. Set `WAKE_TO_RECONNECT=0` to turn it
+off. This hasn't yet been seen working on a real Kindle; the log will show
+it (see Checking it works).
 
 The front light is never touched; it is already off while the Kindle sleeps.
 
@@ -120,6 +131,7 @@ automatically, so the system partition is never modified.
 | `SCHEDULE` | `06:00-10:00=10 10:00-22:00=30 22:00-06:00=120` | Refresh bands, `START-END=MINUTES`, in UK time. |
 | `CLOCK` | `1` | `1` keeps the time in the top right current (a short wake each minute, no Wi-Fi). `0` turns that off. |
 | `DRAW_DELAY` | `2` | Seconds to wait after the Kindle goes to sleep before drawing. |
+| `WAKE_TO_RECONNECT` | `1` | `1` wakes the Kindle briefly to reconnect when Wi-Fi is stuck while asleep (at most once an hour). `0` turns that off. |
 | `WIFI_TIMEOUT` | `60` | Give up on Wi-Fi after this many seconds. Installs from before 13 Oct 2026 may still have `30` in `config.sh` (`install.sh` never overwrites it); use 60. |
 | `FETCH_TIMEOUT` | `20` | Give up on the download after this many seconds. |
 
@@ -156,6 +168,22 @@ restarts it. If the restart works, the `fetched` line follows it:
 2026-10-13 07:49:58 fetched new image (122344 bytes, next 08:00, battery 80%)
 ```
 
+If the restart fails too, the next update wakes the Kindle to reconnect.
+When that works, it looks like this:
+
+```
+2026-10-15 09:41:03 update (scheduled): starting (state screenSaver, wifi 0)
+2026-10-15 09:41:03 waking the Kindle to reconnect, as Wi-Fi has failed 2 times in a row
+2026-10-15 09:41:04 event outOfScreenSaver (state active)
+2026-10-15 09:41:04 restarting Wi-Fi, as the last update failed
+2026-10-15 09:41:19 fetched new image (123106 bytes, next 09:50, battery 60%)
+2026-10-15 09:41:20 event goingToScreenSaver (state screenSaver)
+2026-10-15 09:41:21 back to sleep after waking to reconnect
+```
+
+The `Wi-Fi did not connect` line also gives `wpa_state`: what the Kindle's
+Wi-Fi driver was doing (`?` if it couldn't tell).
+
 The client has run on a Paperwhite 10 since 12 Oct 2026. If something's off,
 send me the log; just check it first for anything you'd rather not share.
 
@@ -172,7 +200,10 @@ send me the log; just check it first for anything you'd rather not share.
 | `fetch failed (curl exit 22)` with `403` | The token in `config.sh` doesn't match the Worker's `ACCESS_TOKEN`. |
 | `OFFLINE SINCE` above the clock | Updates have failed since that time; the log says why. The trains and weather are as of the footer's `UPDATED` time. |
 | `Wi-Fi did not connect within 60s` once or twice | The saved Wi-Fi network wasn't reachable. Check Wi-Fi works normally on the Kindle. |
-| `Wi-Fi did not connect` again and again, each after `restarting Wi-Fi` | Restarting Wi-Fi didn't clear it. Check your Wi-Fi works; if it does, waking the Kindle fixes it for now. Send me the log. |
+| `Wi-Fi did not connect` again and again, each after `restarting Wi-Fi` | Restarting Wi-Fi didn't clear it. Look for `waking the Kindle to reconnect` within the hour. If it's there and still fails, check your Wi-Fi works. Send me the log. |
+| `could not wake the Kindle` | The Kindle ignored the request to wake up, so it can't reconnect that way on this firmware. Tell me. Waking it by hand fixes it for now. |
+| `could not put the Kindle back to sleep` | It was left on the home screen after reconnecting. It goes to sleep by itself after a few minutes. Tell me. |
+| The home screen appears briefly while nobody is using the Kindle | That's the wake to reconnect stuck Wi-Fi. Set `WAKE_TO_RECONNECT=0` if you'd rather it didn't. |
 | Footer `NEXT` time is in the past | The last refresh failed; the log says why. |
 | The screen doesn't change overnight or between refreshes | Look for `wake timer set` before each refresh. If it's there but no `timer wake: refresh due` follows, the wake timer isn't working on this firmware. Tell me. |
 | The clock stops between refreshes | Check the `clock: redrawn` count in the log. If it stays at 0 or 1, the Kindle isn't waking each minute. Tell me, and set `CLOCK=0` meanwhile. |
@@ -220,7 +251,9 @@ python3 kindle/test/test_client.py
   starting, sleeping, a timer wake with a slow fetch, a failed fetch, waking to
   read, Update Now and Stop. Also Wi-Fi that won't connect until restarted:
   the failed update shows `OFFLINE SINCE`, the next one restarts Wi-Fi and
-  fetches.
+  fetches. And Wi-Fi that only reconnects while awake: after two failures the
+  update wakes the Kindle, fetches, puts it back to sleep and redraws, and
+  doesn't wake it again within the hour.
 - **Clock:** which digits are redrawn and where, the wake-up each minute (and
   the early draw when under 20 seconds are left), a refresh that falls due as
   the Kindle goes to sleep (kept, not skipped), the midnight refresh, and a

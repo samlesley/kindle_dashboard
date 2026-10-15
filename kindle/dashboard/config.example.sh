@@ -23,6 +23,11 @@ CLOCK=1
 # ends up on top.
 DRAW_DELAY=2
 
+# If Wi-Fi gets stuck while the Kindle sleeps (two failed updates in a row),
+# wake the Kindle briefly to reconnect, then put it back to sleep: 1 on, 0 off.
+# The home screen shows for up to a minute while it does, at most once an hour.
+WAKE_TO_RECONNECT=1
+
 # Give up on Wi-Fi or the download after this many seconds (keeps wakes short).
 WIFI_TIMEOUT=60
 FETCH_TIMEOUT=20
