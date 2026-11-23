@@ -9,7 +9,6 @@
 import type { DashboardModel, TrainsData } from "./dashboard";
 import { BLACK, Canvas, WHITE } from "./render/canvas";
 import type { Align, Font } from "./render/text";
-import type { TrainingView } from "./training";
 import type { Departure } from "./trains/ldb";
 import { formatRain, type WeatherView } from "./weather";
 
@@ -32,15 +31,14 @@ const BAND_H = 126;
 const TRAINS_HEADING = 236;
 const COLUMN_HEADS = 276;
 const ROWS_TOP = 289;
-const ROWS_BOTTOM = 589; // three rows of 100 px
-const WEATHER_HEADING = 637;
-const SUMMARY = 690;
-const BOXES_TOP = 704;
-const BOXES_H = 120;
-const STRIP_TOP = 836;
-const STRIP_BOTTOM = 1044;
-const NOTICE_TOP = 1058;
-// The training section and the BBC headline share what's left above the footer.
+const ROWS_BOTTOM = 634; // three rows of 115 px
+const WEATHER_HEADING = 684;
+const SUMMARY = 737;
+const BOXES_TOP = 751;
+const BOXES_H = 140;
+const STRIP_TOP = 903;
+const STRIP_BOTTOM = 1153;
+const NOTICE_TOP = 1168;
 const FOOTER_RULE = 1398;
 const FOOTER_BASE = 1432;
 
@@ -265,13 +263,13 @@ function drawDepartures(p: Painter, data: TrainsData): void {
 
 function drawRow(p: Painter, d: Departure, top: number, rowH: number, first: boolean): void {
   // Rows squeezed by a service message get slightly smaller text.
-  const k = rowH < 80 ? 0.75 : rowH < 95 ? 0.85 : 1;
+  const k = rowH < 110 ? 0.85 : 1;
   const timeSize = snap((first ? 75 : 67.5) * k);
   const statusSize = snap((first ? 50 : 47.5) * k);
   const leaveSize = snap((first ? 55 : 50) * k);
   const destSize = snap(37.5 * k);
-  const base = top + Math.round(rowH * (k < 0.8 ? 0.56 : 0.52));
-  const destBase = top + Math.round(rowH * (k < 0.8 ? 0.88 : 0.85));
+  const base = top + Math.round(rowH * 0.52);
+  const destBase = top + Math.round(rowH * 0.85);
 
   p.text(d.scheduled, L + INSET, base, timeSize);
 
@@ -325,9 +323,9 @@ function drawBoxes(p: Painter, w: WeatherView): void {
   boxes.forEach(([label, value, sub], k) => {
     const x = Math.round(L + k * bw) + 16;
     const max = Math.round(bw) - 28;
-    p.text(label, x, top + 33, 32.5, BLACK, "left", max);
-    p.text(value, x, top + 78, 57.5, BLACK, "left", max);
-    p.text(sub, x, top + 107, 32.5, BLACK, "left", max);
+    p.text(label, x, top + 36, 32.5, BLACK, "left", max);
+    p.text(value, x, top + 88, 62.5, BLACK, "left", max);
+    p.text(sub, x, top + 124, 32.5, BLACK, "left", max);
   });
 }
 
@@ -342,17 +340,17 @@ function drawStrip(p: Painter, w: WeatherView): void {
     if (k === 0) p.c.fillRect(x0, top, x1 - x0, STRIP_BOTTOM - top, BLACK);
     if (k > 1) p.c.vLine(x0, top, STRIP_BOTTOM, 1, BLACK);
     const cx = Math.round((x0 + x1) / 2);
-    p.text(slot.label, cx, top + 36, 35, color, "center");
-    p.text(`${slot.temp}°`, cx, top + 81, 52.5, color, "center");
+    p.text(slot.label, cx, top + 40, 35, color, "center");
+    p.text(`${slot.temp}°`, cx, top + 94, 57.5, color, "center");
 
     // Rain-chance gauge: five segments, filled from the bottom, 20% each.
     const filled = Math.min(5, Math.max(0, Math.round(slot.chance / 20)));
     for (let s = 0; s < 5; s++) {
-      const y = top + 92 + s * 15;
-      if (4 - s < filled) p.c.fillRect(cx - 22, y, 44, 11, color);
-      else p.c.strokeRect(cx - 22, y, 44, 11, 2, color);
+      const y = top + 110 + s * 17;
+      if (4 - s < filled) p.c.fillRect(cx - 22, y, 44, 13, color);
+      else p.c.strokeRect(cx - 22, y, 44, 13, 2, color);
     }
-    p.text(`${slot.chance}%`, cx, top + 196, 35, color, "center");
+    p.text(`${slot.chance}%`, cx, top + 233, 35, color, "center");
   });
 }
 
@@ -368,76 +366,25 @@ function drawOutlook(p: Painter, outlook: string | null): number {
   return NOTICE_TOP + h;
 }
 
-// The headline sits on the footer rule; with one line its own rule is here.
-const HEADLINE_LINE_H = 40;
-const HEADLINE_LAST_BASE = FOOTER_RULE - 24;
-const headlineRule = (lines: number) => HEADLINE_LAST_BASE - (lines - 1) * HEADLINE_LINE_H - 46;
-
-// The training section: what the plan says for today (tomorrow, late on).
-const TRAINING_GAP = 14; // above the section heading's text
-const TITLE_SIZE = 42.5;
-const TITLE_LINE_H = 40;
-const DETAIL_SIZE = 35;
-const DETAIL_LINE_H = 31;
-
-/** Returns the y just below the last thing drawn. */
+/**
+ * One line under the weather: a reversed-out "TODAY'S TRAINING" label, then
+ * the day's sessions in a few words. Returns the y just below it.
+ */
 function drawTraining(p: Painter, m: DashboardModel, contentTop: number): number {
   if (!m.training) return contentTop;
-  const headBase = contentTop + TRAINING_GAP + Math.round(p.cap(37.5));
-  // Leave room for at least one line of headline.
-  const limit = (m.headline ? headlineRule(1) : FOOTER_RULE) - 12;
+  const size = 40;
+  const badgeSize = 37.5;
+  const base = contentTop + 12 + 9 + Math.round(p.cap(badgeSize));
   const t = m.training.ok ? m.training.data : null;
-  const right = t?.found && t.weekKm !== null ? `WEEK ${Number(t.week.slice(-2))} · ${fmtKm(t.weekKm)}` : null;
-  p.heading(`[ TRAINING ${t?.when ?? "TODAY"} ]`, right, headBase, 30);
-
-  const first = headBase + TITLE_LINE_H + 4;
-  if (!t) {
-    p.text(`PLAN UNAVAILABLE: ${m.training.ok ? "" : m.training.error}`, L, first, DETAIL_SIZE, BLACK, "left", CW);
-    return first + 10;
-  }
-  if (!t.found || !t.sessions.length) {
-    const msg = !t.found ? `NO PLAN FOR WEEK ${Number(t.week.slice(-2))} YET` : "NOTHING PLANNED. REST DAY.";
-    p.text(msg, L, first, TITLE_SIZE, BLACK, "left", CW);
-    return first + 10;
-  }
-  return drawSessions(p, t, first, limit);
+  const label = `${t?.when === "TOMORROW" ? "TOMORROW'S" : "TODAY'S"} TRAINING`;
+  const badgeW = p.badge(label, L, base, badgeSize);
+  const text = t ? t.line : `UNAVAILABLE: ${m.training.ok ? "" : m.training.error}`;
+  // A long day steps down a size or two before it's cut short.
+  const maxW = R - L - badgeW - 16;
+  const fitSize = [size, 37.5, 35, 32.5].find((s) => p.width(text, s) <= maxW) ?? 32.5;
+  p.text(text, L + badgeW + 16, base, fitSize, BLACK, "left", maxW);
+  return base + 8;
 }
-
-function drawSessions(p: Painter, t: TrainingView, firstBase: number, limit: number): number {
-  // Every session gets its title line. Lines to spare go to details: one
-  // each, in order (the run comes before the gym), then a second line each.
-  const titlesBottom = firstBase + (t.sessions.length - 1) * TITLE_LINE_H;
-  let spare = Math.max(0, Math.floor((limit - titlesBottom) / DETAIL_LINE_H));
-  const allowed = t.sessions.map(() => 0);
-  for (let pass = 0; pass < 2; pass++) {
-    t.sessions.forEach((s, i) => {
-      if (s.detail && spare > 0) {
-        allowed[i]++;
-        spare--;
-      }
-    });
-  }
-  const detailLines = t.sessions.map((s, i) => (s.detail && allowed[i] ? p.wrap(s.detail, DETAIL_SIZE, CW, allowed[i]) : []));
-
-  let y = firstBase;
-  let bottom = firstBase;
-  t.sessions.forEach((s, i) => {
-    if (y > limit) return; // no room for this one
-    const km = s.km !== null ? fmtKm(s.km) : "";
-    const kmW = km ? p.text(km, R, y, TITLE_SIZE, BLACK, "right") : 0;
-    p.text(s.title, L, y, TITLE_SIZE, BLACK, "left", CW - (kmW ? kmW + 30 : 0));
-    bottom = y;
-    for (const line of detailLines[i]) {
-      y += DETAIL_LINE_H;
-      p.text(line, L, y, DETAIL_SIZE);
-      bottom = y;
-    }
-    y += TITLE_LINE_H;
-  });
-  return bottom + 10;
-}
-
-const fmtKm = (km: number) => `${Number.isInteger(km) ? km : km.toFixed(1)} KM`;
 
 function drawFooter(p: Painter, m: DashboardModel, contentBottom: number): void {
   const sun = m.weather.ok ? m.weather.data : null;
@@ -447,12 +394,12 @@ function drawFooter(p: Painter, m: DashboardModel, contentBottom: number): void 
 
   if (!m.headline) return;
   const size = 40;
-  const lineH = HEADLINE_LINE_H;
+  const lineH = 40;
   const badgeSize = 37.5;
   const badgeW = p.width("BBC", badgeSize) + 16;
   const textX = L + badgeW + 16;
-  const lastBase = HEADLINE_LAST_BASE;
-  const ruleFor = headlineRule;
+  const lastBase = FOOTER_RULE - 24;
+  const ruleFor = (lines: number) => lastBase - (lines - 1) * lineH - 46;
 
   const story = m.headline.ok ? m.headline.data : `[HEADLINE UNAVAILABLE: ${m.headline.error}]`;
   const maxLines = ruleFor(2) >= contentBottom + 14 ? 2 : 1;

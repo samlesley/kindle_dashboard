@@ -156,7 +156,7 @@ read-only token):
    `training.data.sessions` should list today's sessions. `GITHUB TOKEN CAN'T
    READ PLAN_REPO` means the token wasn't given access to the repository (or
    `PLAN_REPO` is misspelt); `GITHUB HTTP 401` means the token is wrong or has
-   expired. Either way the screen shows the reason under `[ TRAINING TODAY ]`.
+   expired. Either way the screen shows the reason after `TODAY'S TRAINING`.
 
 When Rail Data Marketplace approves your account:
 
@@ -255,23 +255,26 @@ forecast is kept for up to 24 h and the heading says `AS OF hh:mm`):
   - `TOMORROW: PARTLY CLOUDY, 1° TO 9°. DRY. WRAP UP WARM.`
 
 **Training** (GitHub, cached 30 min; if a refresh fails, the last copy is
-kept for up to a week): the sessions in the week's plan file for today, or for
-tomorrow from `TOMORROW_FROM` (18:30), when the weather box moves on too.
-The heading shows the week number and its planned kilometres. Each session
-gets its title and distance, then a short line on what to do:
+kept for up to a week): one line under the weather, `TODAY'S TRAINING` and
+the day's sessions in a few words. From `TOMORROW_FROM` (18:30) it shows
+`TOMORROW'S TRAINING`, as the weather box does, and goes back to today's at
+midnight. For example:
 
-- a run's prescription bullets, without the warm-up and jog home
-  (`6X2 MIN AT 3:10 TO 3:15, 2 MIN STANDING BETWEEN · 4X100M STRIDES`);
-- a paragraph prescription's first sentence (`EASY, 5:00 TO 5:10`);
-- the exercise names of a gym session (`SQUATS · SIDE PLANK · …`);
-- `SET BY THE CLUB` for a club session.
+| Plan says | Line shows |
+| --- | --- |
+| easy, 8 km, "8 km easy at 5:00 to 5:10" | `EASY 8 KM AT 5:00/KM` |
+| long, 14 km, "14 km easy at 4:50 to 5:05" | `LONG RUN 14 KM AT 4:50/KM` |
+| club, 12 km | `CLUB SESSION 12 KM` |
+| session "6x2 min, short and sharp", 8.5 km | `SESSION 8.5 KM: 6X2 MIN AT 3:10/KM` |
+| race "West District Championships" | `RACE: WEST DISTRICT CHAMPIONSHIPS` |
+| a run and a gym session | `EASY 6 KM AT 5:00/KM + STRIDES + GYM` |
 
-Only the YAML front matter's `sessions` list is read (`date`, `kind`, `title`,
-`target_km`, `prescription`); the prose below it is ignored. There is room
-for about four lines, so on a day with a run and a gym session the gym's line
-is the first to go. A day with nothing planned says `NOTHING PLANNED. REST
-DAY.`, and a week with no file yet says `NO PLAN FOR WEEK 51 YET`. A plan
-change shows within 30 minutes.
+The pace is the quickest one the prescription gives, ignoring the warm-up
+and jog home. Gym sessions are just `GYM`: the details are in the training
+app. A long line steps down a font size or two before it's cut short. A day
+with nothing planned says `REST DAY`, and a week with no file yet says `NO
+PLAN FOR WEEK 51 YET`. Only the YAML front matter's `sessions` list is read
+(`date`, `kind`, `title`, `target_km`, `prescription`).
 
 **Headline:** the first `<item>` title from `feeds.bbci.co.uk/news/rss.xml`,
 cached for 30 minutes. It wraps onto two lines when there's room.
@@ -288,7 +291,7 @@ src/trains/ldb.ts     Live Departure Board client and row selection
 src/trains/mock.ts    sample boards (normal / delayed / cancelled)
 src/weather.ts        Open-Meteo client, summary, boxes, strip, outlook
 src/headline.ts       BBC RSS
-src/training.ts       training plan: GitHub fetch, front matter reader, the day's sessions
+src/training.ts       training plan: GitHub fetch, front matter reader, the day's line
 src/cache.ts          memory → KV (or Cache API) read-through cache
 src/layout.ts         all positions and sizes
 src/clock.ts          clock digit and offline note images and positions for the Kindle

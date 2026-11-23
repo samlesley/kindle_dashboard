@@ -15,8 +15,8 @@ export interface PlannedSession {
   kind: string;
   title: string;
   km: number | null;
-  /** One short line on what to do, or null when the title says it all. */
-  detail: string | null;
+  /** The session in a few words, e.g. "EASY 8 KM AT 5:00/KM" or "GYM". */
+  summary: string;
 }
 
 export interface TrainingView {
@@ -31,6 +31,8 @@ export interface TrainingView {
   found: boolean;
   /** Empty when nothing is planned for the day. */
   sessions: PlannedSession[];
+  /** What the screen shows: the day's sessions on one line. */
+  line: string;
 }
 
 type Yaml = string | Yaml[] | { [key: string]: Yaml };
@@ -207,25 +209,50 @@ export function bullets(text: string): string[] {
   return items;
 }
 
-const firstSentence = (text: string): string => {
-  const flat = text.replace(/\s+/g, " ").trim();
-  const m = /^(.+?[.!?])(\s|$)/.exec(flat);
-  return (m ? m[1] : flat).replace(/\.$/, "");
-};
-
 const ROUTINE = /^(?:[\d.]+\s*km\s+)?(?:warm[ -]?up|cool[ -]?down|jog(?:ged)?)\b/i;
+const PACE = /\b(\d{1,2}:\d{2})\b/;
 
-/** One short line on what to do. */
-export function sessionDetail(kind: string, prescription: string): string | null {
-  if (kind === "club") return "SET BY THE CLUB";
-  if (!prescription.trim()) return null;
+const fmtKm = (km: number | null) => (km === null ? "" : ` ${Number.isInteger(km) ? km : km.toFixed(1)} KM`);
+
+/** The quickest pace the prescription asks for, leaving out the warm-up and jog home. */
+export function mainPace(prescription: string): string | null {
   const items = bullets(prescription);
-  if (!items.length) return firstSentence(prescription);
-  // Gym bullets read "Squats — 2 sets of 5, at 60kg and 70kg": the names are enough.
-  if (kind === "gym") return items.map((b) => b.split(/\s+[—–]\s+/)[0]).join(" · ");
-  // Warm-ups and jogs home take up the line and are the same every time.
-  const main = items.filter((b) => !ROUTINE.test(b));
-  return (main.length ? main : items).join(" · ");
+  const text = items.length ? items.filter((b) => !ROUTINE.test(b)).join(" ") || items.join(" ") : prescription;
+  return PACE.exec(text)?.[1] ?? null;
+}
+
+/**
+ * The session in a few words, for a glance across the room:
+ * "EASY 8 KM AT 5:00/KM", "CLUB SESSION 12 KM", "LONG RUN 14 KM AT 4:50/KM",
+ * "SESSION 8.5 KM: 6X2 MIN AT 3:10/KM", "RACE: WEST DISTRICT CHAMPIONSHIPS", "GYM".
+ */
+export function summarise(kind: string, title: string, km: number | null, prescription: string): string {
+  const pace = mainPace(prescription);
+  const at = pace ? ` AT ${pace}/KM` : "";
+  const strides = /strides/i.test(title) ? " + STRIDES" : "";
+  switch (kind) {
+    case "easy":
+      return `EASY${fmtKm(km)}${at}${strides}`;
+    case "long":
+      return `LONG RUN${fmtKm(km)}${at}${strides}`;
+    case "club":
+      return `CLUB SESSION${fmtKm(km)}`;
+    case "session": {
+      // "6x2 min, short and sharp" -> "6x2 min"; "4x5 min sub-threshold" -> "4x5 min"
+      // (the pace says how hard). A title without reps is kept to its first clause.
+      const reps = /^\d+\s*x\s*\d+(?:\.\d+)?\s*(?:min|mins|s|sec|m|km)\b/i.exec(title);
+      const set = reps ? `${reps[0]}${/hill/i.test(title) ? " hills" : ""}` : title.split(",")[0].trim();
+      return `SESSION${fmtKm(km)}${set ? `: ${set}${at}` : at}`;
+    }
+    case "race":
+      return `RACE: ${title.split(",")[0].trim()}`;
+    case "gym":
+      return "GYM";
+    case "rest":
+      return "REST";
+    default:
+      return `${title}${fmtKm(km)}`;
+  }
 }
 
 export function sessionsOn(frontMatter: { [key: string]: Yaml }, ymd: string): PlannedSession[] {
@@ -239,13 +266,9 @@ export function sessionsOn(frontMatter: { [key: string]: Yaml }, ymd: string): P
     .filter((s): s is { [key: string]: Yaml } => typeof s === "object" && !Array.isArray(s) && str(s.date) === ymd)
     .map((s) => {
       const kind = str(s.kind).toLowerCase();
-      return {
-        id: str(s.id),
-        kind,
-        title: str(s.title) || kind.toUpperCase(),
-        km: num(s.target_km),
-        detail: sessionDetail(kind, str(s.prescription)),
-      };
+      const title = str(s.title) || kind.toUpperCase();
+      const km = num(s.target_km);
+      return { id: str(s.id), kind, title, km, summary: summarise(kind, title, km, str(s.prescription)) };
     })
     .sort((a, b) => slot(a.id) - slot(b.id));
 }
@@ -295,7 +318,11 @@ export async function fetchWeekPlan(src: PlanSource, week: string, fetchFn: type
 }
 
 export function buildTraining(md: string | null, week: string, ymd: string, when: string): TrainingView {
-  if (md === null) return { when, date: ymd, week, weekKm: null, found: false, sessions: [] };
+  const weekNo = Number(week.slice(-2));
+  if (md === null) return { when, date: ymd, week, weekKm: null, found: false, sessions: [], line: `NO PLAN FOR WEEK ${weekNo} YET` };
   const fm = parseFrontMatter(md);
-  return { when, date: ymd, week, weekKm: num(fm.target_km), found: true, sessions: sessionsOn(fm, ymd) };
+  const sessions = sessionsOn(fm, ymd);
+  // Two gym slots, or a rest entry beside a run, would only repeat or contradict.
+  const parts = [...new Set(sessions.map((s) => s.summary))].filter((p, _, all) => p !== "REST" || all.length === 1);
+  return { when, date: ymd, week, weekKm: num(fm.target_km), found: true, sessions, line: parts.join(" + ") || "REST DAY" };
 }

@@ -4,7 +4,7 @@ import { clearMemoryCache } from "../src/cache";
 import type { Env } from "../src/config";
 import { handleRequest } from "../src/handler";
 import { loadFont } from "../src/render";
-import { addDays, bullets, buildTraining, isoWeekId, parseFrontMatter, sessionDetail } from "../src/training";
+import { addDays, bullets, buildTraining, isoWeekId, mainPace, parseFrontMatter, summarise } from "../src/training";
 import { fixtureFetch, SAMPLE_PLAN, SAMPLE_TIME } from "../scripts/fixtures";
 
 const font = loadFont(readFileSync(new URL("../fonts/VT323-Regular.ttf", import.meta.url)));
@@ -55,34 +55,46 @@ describe("plan file", () => {
       ["Easy run, with strides", 6],
       ["Gym: main session", null],
     ]);
+    expect(t.line).toBe("EASY 6 KM AT 5:00/KM + STRIDES + GYM");
   });
 
   it("has nothing for a day without sessions, and says when there's no file", () => {
-    expect(buildTraining(SAMPLE_PLAN, "2026-W41", "2026-10-06", "TODAY").sessions).toEqual([]);
-    expect(buildTraining(null, "2026-W42", "2026-10-12", "TODAY")).toMatchObject({ found: false, sessions: [] });
+    expect(buildTraining(SAMPLE_PLAN, "2026-W41", "2026-10-06", "TODAY")).toMatchObject({ sessions: [], line: "REST DAY" });
+    expect(buildTraining(null, "2026-W42", "2026-10-12", "TODAY")).toMatchObject({
+      found: false,
+      sessions: [],
+      line: "NO PLAN FOR WEEK 42 YET",
+    });
   });
 });
 
-describe("the short line under each session", () => {
+describe("the one-line summary", () => {
   it("joins bullets, with continuation lines, and skips the explanation after them", () => {
     expect(bullets("- one\n- two\n  more\n\nWhy.")).toEqual(["one", "two more"]);
     expect(bullets("A paragraph.\n- not a list")).toEqual([]);
   });
 
-  it("leaves out warm-ups and jogs home", () => {
-    const p = "- 2 km warm up, unhurried\n- 6x2 min at 3:10 to 3:15, 2 min standing between\n- 2 km jog home\n";
-    expect(sessionDetail("session", p)).toBe("6x2 min at 3:10 to 3:15, 2 min standing between");
-    expect(sessionDetail("session", "- 8x300m, 90 s jog between\n")).toBe("8x300m, 90 s jog between");
+  it("takes the pace from the main set, not the warm-up", () => {
+    expect(mainPace("- 2 km warm up at 5:30\n- 6x2 min at 3:10 to 3:15\n- 2 km jog home\n")).toBe("3:10");
+    expect(mainPace("Easy, 5:00 to 5:10. Day after the club session.\n")).toBe("5:00");
+    expect(mainPace("Easy and short.\n")).toBeNull();
   });
 
-  it("names the exercises in a gym session", () => {
-    expect(sessionDetail("gym", "- Squats — 2 sets of 5\n- Side plank — 1 min each side\n")).toBe("Squats · Side plank");
-  });
-
-  it("uses the first sentence of a paragraph, and says who sets club sessions", () => {
-    expect(sessionDetail("easy", "Easy, 5:00 to 5:10. Day after the club session.\n")).toBe("Easy, 5:00 to 5:10");
-    expect(sessionDetail("club", "")).toBe("SET BY THE CLUB");
-    expect(sessionDetail("rest", "")).toBeNull();
+  it("says each kind of session in a few words", () => {
+    expect(summarise("easy", "Easy run", 8, "- 8 km easy at 5:00 to 5:10\n")).toBe("EASY 8 KM AT 5:00/KM");
+    expect(summarise("easy", "Easy run", 4, "Easy and short.\n")).toBe("EASY 4 KM");
+    expect(summarise("long", "Long run, easy", 14, "- 14 km easy at 4:50 to 5:05\n")).toBe("LONG RUN 14 KM AT 4:50/KM");
+    expect(summarise("club", "Club session", 12, "")).toBe("CLUB SESSION 12 KM");
+    expect(
+      summarise("session", "6x2 min, short and sharp", 8.5, "- 2 km warm up\n- 6x2 min at 3:10 to 3:15, 2 min standing\n- 2 km jog home\n"),
+    ).toBe("SESSION 8.5 KM: 6x2 min AT 3:10/KM");
+    expect(summarise("session", "4x5 min sub-threshold, plus strides", 11, "- 4x5 min at 3:38 to 3:44\n")).toBe(
+      "SESSION 11 KM: 4x5 min AT 3:38/KM",
+    );
+    expect(summarise("session", "6x60 s hills", 9, "- 6x60 s uphill at 3:45 to 4:00\n")).toBe("SESSION 9 KM: 6x60 s hills AT 3:45/KM");
+    expect(summarise("race", "West District Championships", 13.5, "- Race, 8 km, run hard\n")).toBe("RACE: West District Championships");
+    expect(summarise("race", "West League XC, run controlled", 10, "")).toBe("RACE: West League XC");
+    expect(summarise("gym", "Gym — deload", null, "- Squats — 2 sets of 5 at 60kg\n")).toBe("GYM");
   });
 });
 
@@ -117,8 +129,15 @@ describe("in the dashboard", () => {
   it("moves on to tomorrow with the weather box", async () => {
     const evening = new Date("2026-10-09T17:30:00Z"); // 18:30 BST
     const model = await (await get(env, fixtureFetch(), evening)).json();
-    expect(model.training.data).toMatchObject({ when: "TOMORROW", date: "2026-10-10" });
-    expect(model.training.data.sessions[0].title).toBe("6x2 min, short and sharp");
+    expect(model.training.data).toMatchObject({ when: "TOMORROW", date: "2026-10-10", line: "SESSION 8.5 KM: 6x2 min AT 3:10/KM" });
+  });
+
+  it("goes back to today at midnight", async () => {
+    const justBefore = new Date("2026-10-09T22:59:00Z"); // 23:59 BST on Friday
+    const justAfter = new Date("2026-10-09T23:00:00Z"); // 00:00 BST on Saturday
+    expect((await (await get(env, fixtureFetch(), justBefore)).json()).training.data).toMatchObject({ when: "TOMORROW", date: "2026-10-10" });
+    clearMemoryCache();
+    expect((await (await get(env, fixtureFetch(), justAfter)).json()).training.data).toMatchObject({ when: "TODAY", date: "2026-10-10" });
   });
 
   it("says when the week has no plan, and when GitHub fails", async () => {
