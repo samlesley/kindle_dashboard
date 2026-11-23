@@ -11,6 +11,7 @@ export interface KVLike {
 export interface Env {
   ACCESS_TOKEN?: string;
   RDM_KEY?: string;
+  GITHUB_TOKEN?: string;
   CACHE?: KVLike;
 
   LAT?: string;
@@ -32,6 +33,9 @@ export interface Env {
   EVENING_FROM?: string;
   TOMORROW_FROM?: string;
   SHOW_HEADLINE?: string;
+  PLAN_REPO?: string;
+  PLAN_BRANCH?: string;
+  PLAN_DIR?: string;
 }
 
 export type MockScenario = "normal" | "delayed" | "cancelled";
@@ -58,6 +62,11 @@ export interface Config {
   /** Minutes since midnight when the outlook box moves on to tomorrow. */
   tomorrowFrom: number;
   showHeadline: boolean;
+  /** owner/name of the training repository; empty hides the training section. */
+  planRepo: string;
+  planBranch: string;
+  /** Folder in that repository holding the <iso-week>.md plan files. */
+  planDir: string;
 }
 
 const num = (v: unknown, fallback: number): number => {
@@ -97,5 +106,8 @@ export function loadConfig(env: Env): Config {
     eveningFrom: parseHhmm(env.EVENING_FROM) ?? 15 * 60,
     tomorrowFrom: parseHhmm(env.TOMORROW_FROM) ?? 18 * 60 + 30,
     showHeadline: bool(env.SHOW_HEADLINE, true),
+    planRepo: (env.PLAN_REPO ?? "").trim().replace(/^https:\/\/github\.com\//, "").replace(/\/+$/, ""),
+    planBranch: (env.PLAN_BRANCH || "main").trim(),
+    planDir: (env.PLAN_DIR || "training-hq/plan/weeks").trim(),
   };
 }

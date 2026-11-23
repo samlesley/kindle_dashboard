@@ -121,7 +121,8 @@ export function drawDashboard(font: Font, m: DashboardModel): Canvas {
   drawHeader(p, m);
   drawTrains(p, m);
   const noticeBottom = drawWeather(p, m);
-  drawFooter(p, m, noticeBottom);
+  const trainingBottom = drawTraining(p, m, noticeBottom);
+  drawFooter(p, m, trainingBottom);
   return c;
 }
 
@@ -363,6 +364,26 @@ function drawOutlook(p: Painter, outlook: string | null): number {
   p.c.dashedRect(L, NOTICE_TOP, CW, h, 2, 6, 4, BLACK);
   lines.forEach((line, i) => p.text(line, L + 23, NOTICE_TOP + 42 + i * lineH, size, BLACK, "left", maxW));
   return NOTICE_TOP + h;
+}
+
+/**
+ * One line under the weather: a reversed-out "TODAY'S TRAINING" label, then
+ * the day's sessions in a few words. Returns the y just below it.
+ */
+function drawTraining(p: Painter, m: DashboardModel, contentTop: number): number {
+  if (!m.training) return contentTop;
+  const size = 40;
+  const badgeSize = 37.5;
+  const base = contentTop + 12 + 9 + Math.round(p.cap(badgeSize));
+  const t = m.training.ok ? m.training.data : null;
+  const label = `${t?.when === "TOMORROW" ? "TOMORROW'S" : "TODAY'S"} TRAINING`;
+  const badgeW = p.badge(label, L, base, badgeSize);
+  const text = t ? t.line : `UNAVAILABLE: ${m.training.ok ? "" : m.training.error}`;
+  // A long day steps down a size or two before it's cut short.
+  const maxW = R - L - badgeW - 16;
+  const fitSize = [size, 37.5, 35, 32.5].find((s) => p.width(text, s) <= maxW) ?? 32.5;
+  p.text(text, L + badgeW + 16, base, fitSize, BLACK, "left", maxW);
+  return base + 8;
 }
 
 function drawFooter(p: Painter, m: DashboardModel, contentBottom: number): void {

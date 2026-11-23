@@ -48,6 +48,18 @@ function sampleModel(): DashboardModel {
       },
     },
     headline: { ok: true, data: "[TOP STORY HEADLINE FROM THE BBC NEWS FEED]" },
+    training: {
+      ok: true,
+      data: {
+        when: "TODAY",
+        date: "2026-10-09",
+        week: "2026-W41",
+        weekKm: 62.5,
+        found: true,
+        sessions: [],
+        line: "EASY 6 KM AT 5:00/KM + STRIDES + GYM",
+      },
+    },
     battery: 82,
     nextRefresh: "06:54",
   };
