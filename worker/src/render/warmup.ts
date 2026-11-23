@@ -9,7 +9,7 @@ import { londonTime } from "../time";
 import { renderDashboardPng } from ".";
 import type { Font } from "./text";
 
-const CHARS = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`{|}~°";
+const CHARS = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`{|}~°·—";
 // Sizes above this only show times, the date and weather figures.
 const LARGE = 55;
 const LARGE_CHARS = " 0123456789:-.\u00b0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -48,6 +48,20 @@ function sampleModel(): DashboardModel {
       },
     },
     headline: { ok: true, data: "[TOP STORY HEADLINE FROM THE BBC NEWS FEED]" },
+    training: {
+      ok: true,
+      data: {
+        when: "TODAY",
+        date: "2026-10-09",
+        week: "2026-W41",
+        weekKm: 62.5,
+        found: true,
+        sessions: [
+          { id: "2026-W41-fri-am", kind: "easy", title: "Easy run, with strides", km: 6, detail: "5.6 km easy at 5:00 to 5:15 · 4x100m strides" },
+          { id: "2026-W41-fri-gym", kind: "gym", title: "Gym: main session", km: null, detail: "Side plank · Calf raises · Squats" },
+        ],
+      },
+    },
     battery: 82,
     nextRefresh: "06:54",
   };

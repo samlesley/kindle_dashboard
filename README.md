@@ -1,6 +1,6 @@
 # Kindle train and weather display
 
-A live departures and weather screen for a jailbroken Kindle Paperwhite (10th gen), in the teletext style of [`docs/mockup.png`](docs/mockup.png).
+A live departures, weather and training screen for a jailbroken Kindle Paperwhite (10th gen), in the teletext style of [`docs/mockup.png`](docs/mockup.png).
 
 | Part | Folder | Status |
 | --- | --- | --- |

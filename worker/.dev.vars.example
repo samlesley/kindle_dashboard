@@ -2,3 +2,4 @@
 # local machine only; deployed secrets are set with `npx wrangler secret put`.
 ACCESS_TOKEN=pick-any-local-test-value
 # RDM_KEY=
+# GITHUB_TOKEN=

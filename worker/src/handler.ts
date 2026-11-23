@@ -41,7 +41,7 @@ export async function handleRequest(
   }
 
   const cfg = loadConfig(env);
-  const model = await gatherDashboard(cfg, { fetch: fetchFn, rdmKey: env.RDM_KEY, kv: env.CACHE, ctx }, now, {
+  const model = await gatherDashboard(cfg, { fetch: fetchFn, rdmKey: env.RDM_KEY, githubToken: env.GITHUB_TOKEN, kv: env.CACHE, ctx }, now, {
     battery: url.searchParams.get("batt"),
     next: url.searchParams.get("next"),
     scenario: parseScenario(url.searchParams.get("mock")),

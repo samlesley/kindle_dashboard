@@ -2,7 +2,7 @@
 
 Returns a freshly drawn 1072×1448, 8-bit greyscale PNG on every request: the
 next three trains from Alexandra Parade towards Queen St / Partick, today's
-weather, the BBC top story, and a footer showing when it was drawn, the
+weather, the day's training from your training plan, the BBC top story, and a footer showing when it was drawn, the
 Kindle's next refresh time and its battery level. The time in the top right is
 kept current by the Kindle between fetches (see [The clock](#the-clock)). The layout follows [`docs/mockup.png`](../docs/mockup.png).
 
@@ -142,6 +142,22 @@ Things to do by hand (on your own computer, with Node.js 22 or later installed):
    `https://kindle-dashboard.<your-subdomain>.workers.dev/?k=<token>&batt=82&next=06:54`.
    You should see the dashboard with mock trains (top right says `MOCK TRAINS`).
 
+For the training section (its repository is private, so the Worker needs a
+read-only token):
+
+1. On GitHub, go to **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**. Choose **Only select
+   repositories** and pick `training`. Under **Repository permissions**, set
+   **Contents** to **Read-only**, and leave everything else as it is. Pick an
+   expiry date you'll remember (GitHub emails you before it runs out).
+2. Store it: `npx wrangler secret put GITHUB_TOKEN`, then paste the token.
+   No redeploy is needed for a secret.
+3. Check `…/?k=<token>&format=json`: `training.ok` should be `true` and
+   `training.data.sessions` should list today's sessions. `GITHUB TOKEN CAN'T
+   READ PLAN_REPO` means the token wasn't given access to the repository (or
+   `PLAN_REPO` is misspelt); `GITHUB HTTP 401` means the token is wrong or has
+   expired. Either way the screen shows the reason under `[ TRAINING TODAY ]`.
+
 When Rail Data Marketplace approves your account:
 
 7. On raildata.org.uk, subscribe to the **Live Departure Board** product.
@@ -178,8 +194,12 @@ ignores). Neither is ever written to `wrangler.toml`.
 | `EVENING_FROM` | `15:00` | The box under the strip switches to this evening… |
 | `TOMORROW_FROM` | `18:30` | …and then to tomorrow. |
 | `SHOW_HEADLINE` | `true` | `false` hides the BBC line. |
+| `PLAN_REPO` | `samlesley/training` | GitHub repository holding the training plan. Empty hides the training section. |
+| `PLAN_BRANCH` | `main` | Branch to read it from. |
+| `PLAN_DIR` | `training-hq/plan/weeks` | Folder of weekly plan files, one per ISO week (`2026-W48.md`). |
 
-Secrets: `ACCESS_TOKEN` (required), `RDM_KEY` (for live trains).
+Secrets: `ACCESS_TOKEN` (required), `RDM_KEY` (for live trains), `GITHUB_TOKEN`
+(for the training plan, because its repository is private).
 
 ## What each section shows
 
@@ -234,6 +254,25 @@ forecast is kept for up to 24 h and the heading says `AS OF hh:mm`):
   - `THIS EVENING: 8° TO 13°. RAIN NOW, PEAK 18:00. TAKE AN UMBRELLA.`
   - `TOMORROW: PARTLY CLOUDY, 1° TO 9°. DRY. WRAP UP WARM.`
 
+**Training** (GitHub, cached 30 min; if a refresh fails, the last copy is
+kept for up to a week): the sessions in the week's plan file for today, or for
+tomorrow from `TOMORROW_FROM` (18:30), when the weather box moves on too.
+The heading shows the week number and its planned kilometres. Each session
+gets its title and distance, then a short line on what to do:
+
+- a run's prescription bullets, without the warm-up and jog home
+  (`6X2 MIN AT 3:10 TO 3:15, 2 MIN STANDING BETWEEN · 4X100M STRIDES`);
+- a paragraph prescription's first sentence (`EASY, 5:00 TO 5:10`);
+- the exercise names of a gym session (`SQUATS · SIDE PLANK · …`);
+- `SET BY THE CLUB` for a club session.
+
+Only the YAML front matter's `sessions` list is read (`date`, `kind`, `title`,
+`target_km`, `prescription`); the prose below it is ignored. There is room
+for about four lines, so on a day with a run and a gym session the gym's line
+is the first to go. A day with nothing planned says `NOTHING PLANNED. REST
+DAY.`, and a week with no file yet says `NO PLAN FOR WEEK 51 YET`. A plan
+change shows within 30 minutes.
+
 **Headline:** the first `<item>` title from `feeds.bbci.co.uk/news/rss.xml`,
 cached for 30 minutes. It wraps onto two lines when there's room.
 
@@ -249,6 +288,7 @@ src/trains/ldb.ts     Live Departure Board client and row selection
 src/trains/mock.ts    sample boards (normal / delayed / cancelled)
 src/weather.ts        Open-Meteo client, summary, boxes, strip, outlook
 src/headline.ts       BBC RSS
+src/training.ts       training plan: GitHub fetch, front matter reader, the day's sessions
 src/cache.ts          memory → KV (or Cache API) read-through cache
 src/layout.ts         all positions and sizes
 src/clock.ts          clock digit and offline note images and positions for the Kindle

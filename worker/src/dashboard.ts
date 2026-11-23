@@ -15,6 +15,7 @@ import {
   type Departure,
 } from "./trains/ldb";
 import { mockBoard } from "./trains/mock";
+import { addDays, buildTraining, fetchWeekPlan, isoWeekId, type TrainingView } from "./training";
 import { buildWeather, fetchForecast, type WeatherView } from "./weather";
 
 export type Section<T> = { ok: true; data: T; asOf?: string } | { ok: false; error: string };
@@ -37,6 +38,8 @@ export interface DashboardModel {
   weather: Section<WeatherView>;
   /** null when the headline is switched off. */
   headline: Section<string> | null;
+  /** null when no training repository is configured. */
+  training: Section<TrainingView> | null;
   battery: number | null;
   nextRefresh: string | null;
   /**
@@ -50,6 +53,7 @@ export interface DashboardModel {
 export interface Deps {
   fetch: typeof fetch;
   rdmKey?: string;
+  githubToken?: string;
   kv?: KVLike;
   ctx?: WaitUntil;
 }
@@ -64,6 +68,10 @@ const WEATHER_FRESH_MS = 3 * 60 * 60 * 1000;
 const WEATHER_KEEP_MS = 24 * 60 * 60 * 1000;
 const HEADLINE_FRESH_MS = 30 * 60 * 1000;
 const HEADLINE_KEEP_MS = 12 * 60 * 60 * 1000;
+// A plan change shows within half an hour; if GitHub is down, the last copy
+// is used for up to a week (the file only ever covers one week anyway).
+const PLAN_FRESH_MS = 30 * 60 * 1000;
+const PLAN_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function errorText(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
@@ -137,7 +145,32 @@ export async function gatherDashboard(cfg: Config, deps: Deps, at: Date, params:
       })
     : null;
 
-  const [trains, weather, headline] = await Promise.allSettled([trainsTask, weatherTask, headlineTask ?? Promise.resolve(null)]);
+  // Today's sessions, or tomorrow's once the weather box has moved on to tomorrow.
+  const trainingTask = cfg.planRepo
+    ? (async () => {
+        const tomorrow = now.minutes >= cfg.tomorrowFrom;
+        const day = tomorrow ? addDays(now.date, 1) : now.date;
+        const week = isoWeekId(day);
+        const src = { repo: cfg.planRepo, branch: cfg.planBranch, dir: cfg.planDir, token: deps.githubToken };
+        const md = await cached({
+          key: `plan:v1:${cfg.planRepo}:${cfg.planBranch}:${cfg.planDir}:${week}`,
+          freshMs: PLAN_FRESH_MS,
+          keepMs: PLAN_KEEP_MS,
+          now: nowMs,
+          kv: deps.kv,
+          ctx: deps.ctx,
+          fetcher: () => fetchWeekPlan(src, week, deps.fetch),
+        });
+        return buildTraining(md.value, week, day, tomorrow ? "TOMORROW" : "TODAY");
+      })()
+    : null;
+
+  const [trains, weather, headline, training] = await Promise.allSettled([
+    trainsTask,
+    weatherTask,
+    headlineTask ?? Promise.resolve(null),
+    trainingTask ?? Promise.resolve(null),
+  ]);
 
   return {
     now,
@@ -160,6 +193,11 @@ export async function gatherDashboard(cfg: Config, deps: Deps, at: Date, params:
       : headline.status === "fulfilled" && headline.value
         ? { ok: true, data: headline.value.value }
         : { ok: false, error: headline.status === "rejected" ? errorText(headline.reason) : "NO HEADLINE" },
+    training: !trainingTask
+      ? null
+      : training.status === "fulfilled" && training.value
+        ? { ok: true, data: training.value }
+        : { ok: false, error: training.status === "rejected" ? errorText(training.reason) : "NO PLAN" },
     battery: parseBattery(params.battery),
     nextRefresh: parseNext(params.next),
   };

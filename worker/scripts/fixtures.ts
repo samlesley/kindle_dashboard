@@ -21,6 +21,74 @@ const CHANCE: Record<number, number> = {
 const PRECIP: Record<number, number> = { 15: 0.4, 16: 0.6, 17: 0.8, 18: 1.2, 19: 1.0, 20: 0.8, 21: 0.6, 22: 0.4, 23: 0.2 };
 const GUST: Record<number, number> = { 12: 22, 13: 25, 14: 28, 15: 30, 16: 32, 17: 34, 18: 35, 19: 33, 20: 29, 21: 26 };
 
+// A made-up week plan in the training repo's format (YAML front matter, then
+// prose). Friday 09 Oct has two sessions, the most the section has to fit.
+export const SAMPLE_PLAN = `---
+week: 2026-W41
+starts: 2026-10-05
+ends: 2026-10-11
+phase: build
+target_km: 62.5
+gym_cycle: { block: 1, week: 3, of: 5, kind: build }
+club_days: [mon, thu]
+source: sample
+version: 1
+sessions:
+  - id: 2026-W41-mon-am
+    date: 2026-10-05
+    kind: club
+    title: Club session
+    target_km: 10
+    note: >
+      Placeholder. The club sets it.
+  - id: 2026-W41-wed-am
+    date: 2026-10-07
+    kind: easy
+    title: Easy run
+    target_km: 8
+    prescription: >
+      Easy, 5:00 to 5:10. Slower is fine and quicker is not.
+  - id: 2026-W41-fri-gym
+    date: 2026-10-09
+    kind: gym
+    title: "Gym: main session"
+    prescription: |
+      - Side plank — 1 min each side
+      - Calf raises, straight knee — 2 sets of 6 at 50kg, each leg
+      - Squats — 2 sets of 5, at 60kg and 70kg
+      - Single-leg RDL — 2 sets of 5 at 20kg,
+        each leg
+
+      Run first, gym after.
+  - id: 2026-W41-fri-am
+    date: 2026-10-09
+    kind: easy
+    title: Easy run, with strides
+    target_km: 6
+    prescription: |
+      - 5.6 km easy at 5:00 to 5:15
+      - 4x100m strides, relaxed, full walk-back
+
+      Run first, gym after.
+  - id: 2026-W41-sat-am
+    date: 2026-10-10
+    kind: session
+    title: 6x2 min, short and sharp
+    target_km: 8.5
+    prescription: |
+      - 2 km warm up, unhurried
+      - 6x2 min at 3:10 to 3:15, 2 min standing between
+      - 4x100m strides, full walk-back
+      - 2 km jog home
+
+      The sixth no quicker than the first.
+---
+
+# Week 41, 5 to 11 October
+
+Prose for the athlete, which the dashboard doesn't read.
+`;
+
 export interface ForecastTweaks {
   /** Added to every temperature. */
   tempOffset?: number;
@@ -67,12 +135,15 @@ export function sampleRss(headline: string): string {
 </channel></rss>`;
 }
 
-/** A fetch that serves the sample forecast and RSS feed. */
-export function fixtureFetch(opts: { headline?: string; forecast?: ForecastData } = {}): typeof fetch {
+/** A fetch that serves the sample forecast, RSS feed and week plan (2026-W41 only). */
+export function fixtureFetch(opts: { headline?: string; forecast?: ForecastData; plan?: string | null } = {}): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     if (url.includes("open-meteo.com")) return Response.json(opts.forecast ?? sampleForecast());
     if (url.includes("bbci.co.uk")) return new Response(sampleRss(opts.headline ?? SAMPLE_HEADLINE));
+    const plan = opts.plan === undefined ? SAMPLE_PLAN : opts.plan;
+    if (url.startsWith("https://api.github.com/") && url.includes("/2026-W41.md") && plan !== null) return new Response(plan);
+    if (/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+$/.test(url)) return Response.json({ private: true });
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
 }

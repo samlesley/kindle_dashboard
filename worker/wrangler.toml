@@ -54,6 +54,14 @@ TOMORROW_FROM = "18:30"
 # "true" shows the BBC top story line, "false" hides it.
 SHOW_HEADLINE = "true"
 
+# Training plan: the day's sessions from the week's plan file in this GitHub
+# repository (<PLAN_DIR>/<iso-week>.md on PLAN_BRANCH). Empty PLAN_REPO hides
+# the section. A private repository also needs the GITHUB_TOKEN secret.
+PLAN_REPO = "samlesley/training"
+PLAN_BRANCH = "main"
+PLAN_DIR = "training-hq/plan/weeks"
+
 # Secrets (never put these in this file):
 #   npx wrangler secret put ACCESS_TOKEN
 #   npx wrangler secret put RDM_KEY
+#   npx wrangler secret put GITHUB_TOKEN   (read-only access to PLAN_REPO's contents)
