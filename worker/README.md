@@ -120,12 +120,14 @@ Tests and type checks: `npm test` and `npm run typecheck`.
 
 Things to do by hand (on your own computer, with Node.js 22 or later installed):
 
+Already deployed once? To deploy a later change, run `git pull` in
+`kindle_dashboard`, then `npm install` and `npx wrangler deploy` in `worker/`.
+Secrets you set earlier stay in place. The first time, follow these steps:
+
 1. Get the code and install dependencies:
    ```sh
    git clone https://github.com/samlesley/kindle_dashboard.git
-   cd kindle_dashboard
-   git checkout claude/gallant-turing-2e4kkf   # skip once this is merged into main
-   cd worker
+   cd kindle_dashboard/worker
    npm install
    ```
 2. Log in to Cloudflare: `npx wrangler login` (opens a browser).
